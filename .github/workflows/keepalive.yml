@@ -16,6 +16,11 @@ jobs:
     steps:
       - name: Ping Supabase keepalive table
         run: |
-          curl -sf "https://yvolycibskromyqraijg.supabase.co/rest/v1/keepalive?select=id&limit=1" \
+          curl -sS -o response.json -w "HTTP status: %{http_code}\n" \
+            "https://yvolycibskromyqraijg.supabase.co/rest/v1/keepalive?select=id&limit=1" \
             -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2b2x5Y2lic2tyb215cXJhaWpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3MjU0NTIsImV4cCI6MjA5OTMwMTQ1Mn0.laDjpe5-IYFiSDoISq_G8vUn2CMDtxd8pep92O3TeJ0" \
-            --fail-with-body
+            > status.txt
+          cat status.txt
+          echo "Response body:"
+          cat response.json
+          grep -q "HTTP status: 200" status.txt
