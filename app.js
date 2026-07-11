@@ -45,27 +45,28 @@ window.addEventListener("online", () => {
 });
 window.addEventListener("offline", updateConnBanner);
 
-// ---- 盤點人員姓名：同一個帳號可能多人輪流用同一台手機，送出的每筆紀錄都帶這個手動輸入的姓名 ----
-const OPERATOR_NAME_KEY = "stocktake_operator_name";
-
+// ---- 盤點人員姓名：同一個帳號可能多人輪流用同一台手機，送出的每筆紀錄都帶這個手動輸入的姓名。
+// 刻意不預帶任何值、不記住上次輸入：每次登入都必須重新填寫，沒填不能進入盤點（防止換人沒改名）。----
 function accountDisplayName() {
   return session?.user?.user_metadata?.display_name || session?.user?.email || "";
 }
 
-/// 每筆盤點紀錄要記的人員姓名：優先用手動輸入的，沒填則退回帳號顯示名稱。
+/// 每筆盤點紀錄要記的人員姓名：用手動輸入的；理論上進不了盤點畫面就不會是空的，保險起見仍退回帳號顯示名稱。
 function currentOperatorName() {
   const manual = document.getElementById("operator-name-input").value.trim();
   return manual || accountDisplayName();
 }
 
-function initOperatorNameInput() {
+/// 強制填寫盤點人員姓名才能進入盤點。
+function requireOperatorName() {
   const input = document.getElementById("operator-name-input");
-  input.value = localStorage.getItem(OPERATOR_NAME_KEY) || accountDisplayName();
+  if (!input.value.trim()) {
+    alert("請先輸入「目前盤點人員」姓名，才能開始盤點");
+    input.focus();
+    return false;
+  }
+  return true;
 }
-
-document.getElementById("operator-name-input").addEventListener("change", (e) => {
-  localStorage.setItem(OPERATOR_NAME_KEY, e.target.value.trim());
-});
 
 // ---- 登入 ----
 async function restoreSession() {
@@ -75,7 +76,6 @@ async function restoreSession() {
     isAdmin = session.user.app_metadata?.role === "admin";
     document.getElementById("who").textContent =
       (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
-    initOperatorNameInput();
     showScreen("screen-select");
   } else {
     showScreen("screen-login");
@@ -99,7 +99,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   isAdmin = session.user.app_metadata?.role === "admin";
   document.getElementById("who").textContent =
     (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
-  initOperatorNameInput();
+  document.getElementById("operator-name-input").value = ""; // 每次登入都要重新填寫盤點人員
   showScreen("screen-select");
 });
 
@@ -112,6 +112,7 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 // ---- 選擇 初盤/複盤 + 公司 ----
 document.querySelectorAll(".select-type").forEach((btn) => {
   btn.addEventListener("click", () => {
+    if (!requireOperatorName()) return; // 沒填盤點人員姓名不能進入盤點
     currentType = btn.dataset.type;
     document.querySelectorAll(".select-type").forEach((b) => b.classList.remove("btn-primary", "btn-outline-primary"));
     btn.classList.add("btn-primary");
@@ -252,7 +253,8 @@ function renderItemsList() {
             <span class="badge ${badgeClass}">${statusLabel}（${i.counted_qty}）</span>
           </div>
           <div class="small text-muted">${i.name}</div>
-          <div class="item-attrs">規格：${i.spec || "-"}　批號：${i.lot_no || "-"}　有效日期：${i.expiry_date || "-"}</div>
+          <div class="item-attrs">規格：${i.spec || "-"}<span class="attr-sep">｜</span>批號：${i.lot_no || "-"}</div>
+          <div class="item-attrs">有效日期：${i.expiry_date || "-"}</div>
           <div class="small">帳面：${i.book_qty} ${i.unit}</div>
         </div>
       </div>`;
@@ -345,7 +347,8 @@ function renderCountItemInfo() {
   const item = currentItem;
   document.getElementById("count-item-info").innerHTML = `
     <strong>${item.item_no}</strong>　${item.name}<br/>
-    <span class="item-attrs">規格：${item.spec || "-"}　批號：${item.lot_no || "-"}　有效日期：${item.expiry_date || "-"}</span><br/>
+    <div class="item-attrs">規格：${item.spec || "-"}<span class="attr-sep">｜</span>批號：${item.lot_no || "-"}</div>
+    <div class="item-attrs">有效日期：${item.expiry_date || "-"}</div>
     <span class="small">帳面盤點數量：${item.book_qty} ${item.unit}　目前已盤：<strong>${item.counted_qty}</strong>（${item.status}）</span>
   `;
   // 未盤點：顯示「無庫存」、藏「更正總數」；已盤點：顯示「更正總數」、藏「無庫存」
@@ -354,10 +357,23 @@ function renderCountItemInfo() {
   document.getElementById("correct-count-btn").classList.toggle("d-none", !counted);
 }
 
+// ---- 更正模式：點「更正總數」後鍵盤輸入的是「正確的已盤總數」，只留「強制更正數量」「取消」兩個按鈕 ----
+let correctionMode = false;
+function setCorrectionMode(on) {
+  correctionMode = on;
+  document.getElementById("correct-mode-hint").classList.toggle("d-none", !on);
+  document.getElementById("correct-mode-btns").classList.toggle("d-none", !on);
+  document.getElementById("normal-btns").classList.toggle("d-none", on);
+  keypadBuffer = "0";
+  updateKeypadDisplay();
+  document.getElementById("count-submit-error").classList.add("d-none");
+}
+
 function openCountScreen(item) {
   currentItem = item;
   keypadBuffer = "0";
   updateKeypadDisplay();
+  setCorrectionMode(false);
   renderCountItemInfo();
   document.getElementById("count-submit-error").classList.add("d-none");
   loadEntries(item.id);
@@ -424,8 +440,12 @@ document.getElementById("zero-stock-btn").addEventListener("click", async () => 
   updateKeypadDisplay();
 });
 
-// 更正總數：把鍵盤上的數字當成「正確的已盤總數」，自動補一筆差額紀錄（雲端紀錄不可修改，用差額補正）
-document.getElementById("correct-count-btn").addEventListener("click", async () => {
+// 更正總數：進入更正模式（鍵盤重新計、只剩「強制更正數量」「取消」兩個按鈕）
+document.getElementById("correct-count-btn").addEventListener("click", () => setCorrectionMode(true));
+document.getElementById("cancel-correct-btn").addEventListener("click", () => setCorrectionMode(false));
+
+// 強制更正數量：把鍵盤上的數字當成「正確的已盤總數」，自動補一筆差額紀錄（雲端紀錄不可修改，用差額補正）
+document.getElementById("force-correct-btn").addEventListener("click", async () => {
   const errorEl = document.getElementById("count-submit-error");
   errorEl.classList.add("d-none");
   const newTotal = parseInt(keypadBuffer, 10) || 0;
@@ -436,10 +456,8 @@ document.getElementById("correct-count-btn").addEventListener("click", async () 
     errorEl.classList.remove("d-none");
     return;
   }
-  if (!confirm(`把「${currentItem.item_no}」的已盤總數從 ${currentTotal} 更正為 ${newTotal}？\n（會補一筆 ${delta > 0 ? "+" : ""}${delta} 的更正紀錄）`)) return;
   await submitEntry(buildEntry(delta));
-  keypadBuffer = "0";
-  updateKeypadDisplay();
+  setCorrectionMode(false);
 });
 
 async function submitEntry(entry) {
@@ -462,6 +480,14 @@ async function submitEntry(entry) {
     return;
   }
   loadEntries(currentItem.id);
+  // 送出成功後主動抓一次品項最新數值，不依賴 Realtime 推播——手機瀏覽器休眠/切換 App 後
+  // websocket 可能悄悄斷線，只靠 Realtime 會出現「明細有新紀錄但已盤數量凍住」的假象。
+  await refreshItemFromCloud(entry.item_id);
+}
+
+async function refreshItemFromCloud(itemId) {
+  const { data } = await supabaseClient.from("cloud_items").select("*").eq("id", itemId).single();
+  if (data) updateItemInPlace(data);
 }
 
 function markItemPending(itemId) {
@@ -509,13 +535,17 @@ async function flushQueue() {
   flushing = true;
   try {
     const pending = await OfflineQueue.all();
+    const flushedItemIds = new Set();
     for (const entry of pending) {
       const { error } = await supabaseClient.from("cloud_entries").insert(entry);
       // 重複送出（同一 UUID）在 primary key 衝突時視為已成功，一樣移出佇列
       if (!error || error.code === "23505") {
         await OfflineQueue.remove(entry.id);
+        flushedItemIds.add(entry.item_id);
       }
     }
+    // 補送成功的品項主動抓最新數值（不依賴 Realtime，理由同 submitEntry）
+    for (const itemId of flushedItemIds) await refreshItemFromCloud(itemId);
     if (currentItem) loadEntries(currentItem.id);
   } finally {
     flushing = false;
