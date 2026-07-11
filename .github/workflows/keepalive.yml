@@ -1,0 +1,21 @@
+name: Supabase Keepalive
+
+# 部署指南 §5：Supabase 免費版閒置 7 天會自動暫停，每週對 keepalive 表打一次查詢保持喚醒。
+# anon key 設計上就是公開的（config.js 裡本來就有），寫在這裡不是機密外洩。
+# 這個 workflow 只讀 keepalive 表（RLS 只開放這張表給 anon 讀），不會碰到任何盤點資料。
+
+on:
+  schedule:
+    # 每週一 09:00 台灣時間 (UTC+8) = UTC 01:00
+    - cron: "0 1 * * 1"
+  workflow_dispatch: # 允許在 GitHub Actions 頁面手動觸發，方便驗收測試
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase keepalive table
+        run: |
+          curl -sf "https://yvolycibskromyqraijg.supabase.co/rest/v1/keepalive?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2b2x5Y2lic2tyb215cXJhaWpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3MjU0NTIsImV4cCI6MjA5OTMwMTQ1Mn0.laDjpe5-IYFiSDoISq_G8vUn2CMDtxd8pep92O3TeJ0" \
+            --fail-with-body
