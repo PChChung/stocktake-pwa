@@ -174,6 +174,7 @@ async function selectSheet(sheet) {
   document.getElementById("sheet-title").textContent = `${sheet.company} ${sheet.period} ${sheet.type}`;
   document.getElementById("items-list").innerHTML = "";
   document.getElementById("admin-confirm-area").classList.toggle("d-none", !isAdmin);
+  document.getElementById("confirm-sheet-btn").textContent = `確認完成${sheet.type}`;
 
   subscribeRealtime(sheet.id);
   showScreen("screen-items");
@@ -218,11 +219,13 @@ function renderItemsList() {
   container.innerHTML = list
     .map((i) => {
       const badgeClass = i.status === "已盤點" ? "badge-counted" : "badge-uncounted";
+      // 複盤流程時按鈕/狀態文字要顯示「已盤點/複盤」（需求書用字），初盤維持「已盤點」
+      const statusLabel = i.status === "已盤點" && currentSheet?.type === "複盤" ? "已盤點/複盤" : i.status;
       return `<div class="card mb-2 item-row" data-item-id="${i.id}">
         <div class="card-body py-2 px-3">
           <div class="d-flex justify-content-between">
             <strong>${i.item_no}</strong>
-            <span class="badge ${badgeClass}">${i.status}（${i.counted_qty}）</span>
+            <span class="badge ${badgeClass}">${statusLabel}（${i.counted_qty}）</span>
           </div>
           <div class="small text-muted">${i.name}</div>
           <div class="small text-muted">規格：${i.spec || "-"}　批號：${i.lot_no || "-"}　有效日期：${i.expiry_date || "-"}</div>
