@@ -27,6 +27,8 @@
     .keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .keypad-grid button { font-size: 1.5rem; padding: 18px 0; }
     .entry-list li { display: flex; justify-content: space-between; font-size: 0.85rem; }
+    /* 規格/批號/效期在倉庫現場要看得清楚，比一般輔助文字大一號、不用淡色 */
+    .item-attrs { font-size: 0.95rem; color: #212529; }
   </style>
 </head>
 <body>
@@ -57,6 +59,11 @@
         <span id="who" class="text-muted small me-2"></span>
         <button class="btn btn-outline-secondary btn-sm" id="logout-btn">登出</button>
       </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">目前盤點人員（每一筆盤點紀錄都會記這個姓名）</label>
+      <input type="text" class="form-control" id="operator-name-input" placeholder="輸入姓名" />
     </div>
 
     <div class="mb-3">
@@ -97,12 +104,14 @@
       </select>
     </div>
 
-    <div class="d-flex gap-2 mb-2">
-      <button class="btn btn-outline-secondary btn-sm flex-fill" id="search-btn">🔍 搜尋品號</button>
-      <button class="btn btn-outline-secondary btn-sm flex-fill" id="scan-btn">📷 掃描產品條碼</button>
+    <div class="mb-2">
+      <div class="input-group">
+        <input type="text" class="form-control" id="search-input" placeholder="🔍 搜尋品號關鍵字" />
+        <button class="btn btn-outline-secondary" type="button" id="search-clear-btn">清除</button>
+      </div>
     </div>
-    <div id="search-box" class="mb-2 d-none">
-      <input type="text" class="form-control" id="search-input" placeholder="輸入品號關鍵字" />
+    <div class="d-grid mb-2">
+      <button class="btn btn-outline-secondary btn-sm" id="scan-btn">📷 掃描產品條碼</button>
     </div>
 
     <div id="admin-confirm-area" class="mb-2 d-none">
@@ -136,6 +145,10 @@
     <div class="d-grid gap-2 mb-3">
       <button class="btn btn-outline-danger" id="clear-btn">清除</button>
       <button class="btn btn-primary big-btn" id="submit-count-btn">送出</button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-dark flex-fill" id="zero-stock-btn">無庫存（盤點數量 0）</button>
+        <button class="btn btn-outline-warning flex-fill d-none" id="correct-count-btn">更正總數</button>
+      </div>
     </div>
     <div id="count-submit-error" class="alert alert-danger d-none"></div>
 

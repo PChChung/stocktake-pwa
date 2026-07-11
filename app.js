@@ -45,6 +45,28 @@ window.addEventListener("online", () => {
 });
 window.addEventListener("offline", updateConnBanner);
 
+// ---- 盤點人員姓名：同一個帳號可能多人輪流用同一台手機，送出的每筆紀錄都帶這個手動輸入的姓名 ----
+const OPERATOR_NAME_KEY = "stocktake_operator_name";
+
+function accountDisplayName() {
+  return session?.user?.user_metadata?.display_name || session?.user?.email || "";
+}
+
+/// 每筆盤點紀錄要記的人員姓名：優先用手動輸入的，沒填則退回帳號顯示名稱。
+function currentOperatorName() {
+  const manual = document.getElementById("operator-name-input").value.trim();
+  return manual || accountDisplayName();
+}
+
+function initOperatorNameInput() {
+  const input = document.getElementById("operator-name-input");
+  input.value = localStorage.getItem(OPERATOR_NAME_KEY) || accountDisplayName();
+}
+
+document.getElementById("operator-name-input").addEventListener("change", (e) => {
+  localStorage.setItem(OPERATOR_NAME_KEY, e.target.value.trim());
+});
+
 // ---- 登入 ----
 async function restoreSession() {
   const { data } = await supabaseClient.auth.getSession();
@@ -53,6 +75,7 @@ async function restoreSession() {
     isAdmin = session.user.app_metadata?.role === "admin";
     document.getElementById("who").textContent =
       (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
+    initOperatorNameInput();
     showScreen("screen-select");
   } else {
     showScreen("screen-login");
@@ -76,6 +99,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   isAdmin = session.user.app_metadata?.role === "admin";
   document.getElementById("who").textContent =
     (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
+  initOperatorNameInput();
   showScreen("screen-select");
 });
 
@@ -192,12 +216,12 @@ document.getElementById("warehouse-select").addEventListener("change", (e) => {
   renderItemsList();
 });
 
-// ---- 搜尋 ----
-document.getElementById("search-btn").addEventListener("click", () => {
-  document.getElementById("search-box").classList.toggle("d-none");
-  document.getElementById("search-input").focus();
-});
+// ---- 搜尋（搜尋框固定顯示，清除鈕一次清空） ----
 document.getElementById("search-input").addEventListener("input", renderItemsList);
+document.getElementById("search-clear-btn").addEventListener("click", () => {
+  document.getElementById("search-input").value = "";
+  renderItemsList();
+});
 
 // ---- 品項清單渲染 ----
 function renderItemsList() {
@@ -228,7 +252,7 @@ function renderItemsList() {
             <span class="badge ${badgeClass}">${statusLabel}（${i.counted_qty}）</span>
           </div>
           <div class="small text-muted">${i.name}</div>
-          <div class="small text-muted">規格：${i.spec || "-"}　批號：${i.lot_no || "-"}　有效日期：${i.expiry_date || "-"}</div>
+          <div class="item-attrs">規格：${i.spec || "-"}　批號：${i.lot_no || "-"}　有效日期：${i.expiry_date || "-"}</div>
           <div class="small">帳面：${i.book_qty} ${i.unit}</div>
         </div>
       </div>`;
@@ -247,6 +271,11 @@ function updateItemInPlace(updated) {
   const idx = currentItems.findIndex((i) => i.id === updated.id);
   if (idx >= 0) currentItems[idx] = { ...currentItems[idx], ...updated };
   renderItemsList();
+  // 數量輸入畫面開著同一個品項時，上方的「目前已盤」也要跟著即時更新
+  if (currentItem && updated.id === currentItem.id) {
+    currentItem = currentItems[idx] || currentItem;
+    renderCountItemInfo();
+  }
 }
 
 // ---- Realtime 訂閱：任何人送出數量，其他人畫面即時更新 ----
@@ -281,7 +310,6 @@ function openScanner() {
       { facingMode: "environment" },
       { fps: 10, qrbox: 220 },
       (decodedText) => {
-        document.getElementById("search-box").classList.remove("d-none");
         document.getElementById("search-input").value = decodedText;
         renderItemsList();
         closeScanner();
@@ -313,15 +341,24 @@ document.getElementById("back-to-items").addEventListener("click", () => {
   showScreen("screen-items");
 });
 
+function renderCountItemInfo() {
+  const item = currentItem;
+  document.getElementById("count-item-info").innerHTML = `
+    <strong>${item.item_no}</strong>　${item.name}<br/>
+    <span class="item-attrs">規格：${item.spec || "-"}　批號：${item.lot_no || "-"}　有效日期：${item.expiry_date || "-"}</span><br/>
+    <span class="small">帳面盤點數量：${item.book_qty} ${item.unit}　目前已盤：<strong>${item.counted_qty}</strong>（${item.status}）</span>
+  `;
+  // 未盤點：顯示「無庫存」、藏「更正總數」；已盤點：顯示「更正總數」、藏「無庫存」
+  const counted = item.status === "已盤點";
+  document.getElementById("zero-stock-btn").classList.toggle("d-none", counted);
+  document.getElementById("correct-count-btn").classList.toggle("d-none", !counted);
+}
+
 function openCountScreen(item) {
   currentItem = item;
   keypadBuffer = "0";
   updateKeypadDisplay();
-  document.getElementById("count-item-info").innerHTML = `
-    <strong>${item.item_no}</strong>　${item.name}<br/>
-    <span class="small text-muted">規格：${item.spec || "-"}　批號：${item.lot_no || "-"}　有效日期：${item.expiry_date || "-"}</span><br/>
-    <span class="small">帳面盤點數量：${item.book_qty} ${item.unit}　目前已盤：${item.counted_qty}（${item.status}）</span>
-  `;
+  renderCountItemInfo();
   document.getElementById("count-submit-error").classList.add("d-none");
   loadEntries(item.id);
   subscribeEntries(item.id);
@@ -355,16 +392,52 @@ document.getElementById("clear-btn").addEventListener("click", () => {
   updateKeypadDisplay();
 });
 
-document.getElementById("submit-count-btn").addEventListener("click", async () => {
-  const qty = parseInt(keypadBuffer, 10) || 0;
-  const entry = {
+function buildEntry(qty) {
+  return {
     id: crypto.randomUUID(),
     item_id: currentItem.id,
-    operator_name: session.user.user_metadata?.display_name || session.user.email,
+    operator_name: currentOperatorName(),
     qty,
     created_at: new Date().toISOString(),
   };
-  await submitEntry(entry);
+}
+
+document.getElementById("submit-count-btn").addEventListener("click", async () => {
+  const qty = parseInt(keypadBuffer, 10) || 0;
+  const errorEl = document.getElementById("count-submit-error");
+  // 防呆：一般送出不接受 0，確定沒有庫存要走「無庫存」按鈕
+  if (qty === 0) {
+    errorEl.textContent = "數量為 0：如果確定這個品項沒有庫存，請按「無庫存」按鈕送出";
+    errorEl.classList.remove("d-none");
+    return;
+  }
+  await submitEntry(buildEntry(qty));
+  keypadBuffer = "0";
+  updateKeypadDisplay();
+});
+
+// 無庫存：送出一筆數量 0 的紀錄，品項會標成已盤點、已盤總數維持 0
+document.getElementById("zero-stock-btn").addEventListener("click", async () => {
+  if (!confirm(`確定「${currentItem.item_no}」無庫存（盤點數量 0）嗎？`)) return;
+  await submitEntry(buildEntry(0));
+  keypadBuffer = "0";
+  updateKeypadDisplay();
+});
+
+// 更正總數：把鍵盤上的數字當成「正確的已盤總數」，自動補一筆差額紀錄（雲端紀錄不可修改，用差額補正）
+document.getElementById("correct-count-btn").addEventListener("click", async () => {
+  const errorEl = document.getElementById("count-submit-error");
+  errorEl.classList.add("d-none");
+  const newTotal = parseInt(keypadBuffer, 10) || 0;
+  const currentTotal = Number(currentItem.counted_qty) || 0;
+  const delta = newTotal - currentTotal;
+  if (delta === 0) {
+    errorEl.textContent = `目前已盤總數就是 ${currentTotal}，不需要更正`;
+    errorEl.classList.remove("d-none");
+    return;
+  }
+  if (!confirm(`把「${currentItem.item_no}」的已盤總數從 ${currentTotal} 更正為 ${newTotal}？\n（會補一筆 ${delta > 0 ? "+" : ""}${delta} 的更正紀錄）`)) return;
+  await submitEntry(buildEntry(delta));
   keypadBuffer = "0";
   updateKeypadDisplay();
 });
