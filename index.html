@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>庫存盤點</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1e6f5c" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="lib/bootstrap.min.css" />
+  <style>
+    body { padding: 24px 16px; }
+    .status { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.95rem; }
+    .status.ok { background: #d1f7e0; color: #0a5c36; }
+    .status.warn { background: #fff3cd; color: #7a5b00; }
+  </style>
+</head>
+<body>
+  <h1 class="h4">庫存盤點系統</h1>
+  <p class="text-muted">Phase 0 骨架頁面 — 手機 PWA</p>
+  <div id="status" class="status warn">連線檢查中…</div>
+
+  <script src="lib/bootstrap.bundle.min.js"></script>
+  <script src="lib/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

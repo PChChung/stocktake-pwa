@@ -1,0 +1,15 @@
+{
+  "name": "庫存盤點",
+  "short_name": "盤點",
+  "description": "PJ-StockTake 手機盤點 PWA",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1e6f5c",
+  "theme_color": "#1e6f5c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
