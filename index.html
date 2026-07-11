@@ -9,20 +9,154 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="lib/bootstrap.min.css" />
   <style>
-    body { padding: 24px 16px; }
-    .status { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.95rem; }
-    .status.ok { background: #d1f7e0; color: #0a5c36; }
-    .status.warn { background: #fff3cd; color: #7a5b00; }
+    body { padding-bottom: 24px; }
+    .screen { display: none; padding: 16px; }
+    .screen.active { display: block; }
+    .status-banner { padding: 10px 16px; font-size: 0.9rem; text-align: center; }
+    .status-banner.ok { background: #d1f7e0; color: #0a5c36; }
+    .status-banner.warn { background: #fff3cd; color: #7a5b00; }
+    .status-banner.offline { background: #f8d7da; color: #842029; }
+    .big-btn { font-size: 1.1rem; padding: 18px; }
+    .item-row { cursor: pointer; }
+    .item-row .badge-counted { background: #0a5c36; }
+    .item-row .badge-uncounted { background: #6c757d; }
+    .item-row .badge-pending { background: #b45309; }
+    #reader { width: 100%; }
+    .scanner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000; padding: 16px; }
+    .keypad-display { font-size: 3rem; text-align: center; padding: 16px; background: #f1f3f5; border-radius: 8px; margin-bottom: 12px; letter-spacing: 2px; }
+    .keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .keypad-grid button { font-size: 1.5rem; padding: 18px 0; }
+    .entry-list li { display: flex; justify-content: space-between; font-size: 0.85rem; }
   </style>
 </head>
 <body>
-  <h1 class="h4">庫存盤點系統</h1>
-  <p class="text-muted">Phase 0 骨架頁面 — 手機 PWA</p>
-  <div id="status" class="status warn">連線檢查中…</div>
+  <div id="conn-banner" class="status-banner warn">連線檢查中…</div>
+
+  <!-- 登入畫面 -->
+  <section id="screen-login" class="screen active">
+    <h1 class="h4 mt-3">庫存盤點</h1>
+    <form id="login-form" class="mt-4">
+      <div class="mb-3">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-control" id="login-email" required autocomplete="username" />
+      </div>
+      <div class="mb-3">
+        <label class="form-label">密碼</label>
+        <input type="password" class="form-control" id="login-password" required autocomplete="current-password" />
+      </div>
+      <div id="login-error" class="alert alert-danger d-none"></div>
+      <button type="submit" class="btn btn-primary w-100 big-btn">登入</button>
+    </form>
+  </section>
+
+  <!-- 選擇 初盤/複盤 + 公司 -->
+  <section id="screen-select" class="screen">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1 class="h5 mb-0">開始盤點</h1>
+      <div>
+        <span id="who" class="text-muted small me-2"></span>
+        <button class="btn btn-outline-secondary btn-sm" id="logout-btn">登出</button>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">盤點階段</label>
+      <div class="d-grid gap-2">
+        <button class="btn btn-outline-primary big-btn select-type" data-type="初盤">初盤</button>
+        <button class="btn btn-outline-primary big-btn select-type" data-type="複盤">複盤</button>
+      </div>
+    </div>
+
+    <div id="company-area" class="mb-3 d-none">
+      <label class="form-label">公司別</label>
+      <div class="d-grid gap-2">
+        <button class="btn btn-outline-primary big-btn select-company" data-company="英美">英美</button>
+        <button class="btn btn-outline-primary big-btn select-company" data-company="晃聖">晃聖</button>
+        <button class="btn btn-outline-primary big-btn select-company" data-company="育聖">育聖</button>
+      </div>
+    </div>
+
+    <div id="no-sheet-msg" class="alert alert-secondary d-none">目前非盤點期間，請洽管理者。</div>
+
+    <div id="sheet-pick-area" class="d-none">
+      <label class="form-label">選擇盤點單</label>
+      <div id="sheet-pick-list" class="list-group"></div>
+    </div>
+  </section>
+
+  <!-- 選倉庫 + 盤點項目表 -->
+  <section id="screen-items" class="screen">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <button class="btn btn-outline-secondary btn-sm" id="back-to-select">← 返回</button>
+      <span id="sheet-title" class="small text-muted"></span>
+    </div>
+
+    <div class="mb-2">
+      <select class="form-select" id="warehouse-select">
+        <option value="">請選擇倉庫名稱</option>
+      </select>
+    </div>
+
+    <div class="d-flex gap-2 mb-2">
+      <button class="btn btn-outline-secondary btn-sm flex-fill" id="search-btn">🔍 搜尋品號</button>
+      <button class="btn btn-outline-secondary btn-sm flex-fill" id="scan-btn">📷 掃描產品條碼</button>
+    </div>
+    <div id="search-box" class="mb-2 d-none">
+      <input type="text" class="form-control" id="search-input" placeholder="輸入品號關鍵字" />
+    </div>
+
+    <div id="admin-confirm-area" class="mb-2 d-none">
+      <button class="btn btn-success w-100" id="confirm-sheet-btn">確認完成初盤</button>
+      <div id="confirm-error" class="alert alert-danger mt-2 d-none"></div>
+    </div>
+
+    <div id="items-list"></div>
+  </section>
+
+  <!-- 數量輸入畫面 -->
+  <section id="screen-count" class="screen">
+    <button class="btn btn-outline-secondary btn-sm mb-2" id="back-to-items">← 返回品項表</button>
+    <div id="count-item-info" class="mb-2"></div>
+
+    <div class="keypad-display" id="keypad-display">0</div>
+    <div class="keypad-grid mb-2">
+      <button class="btn btn-outline-secondary" data-key="1">1</button>
+      <button class="btn btn-outline-secondary" data-key="2">2</button>
+      <button class="btn btn-outline-secondary" data-key="3">3</button>
+      <button class="btn btn-outline-secondary" data-key="4">4</button>
+      <button class="btn btn-outline-secondary" data-key="5">5</button>
+      <button class="btn btn-outline-secondary" data-key="6">6</button>
+      <button class="btn btn-outline-secondary" data-key="7">7</button>
+      <button class="btn btn-outline-secondary" data-key="8">8</button>
+      <button class="btn btn-outline-secondary" data-key="9">9</button>
+      <button class="btn btn-outline-warning" data-key="-">－</button>
+      <button class="btn btn-outline-secondary" data-key="0">0</button>
+      <button class="btn btn-outline-warning" data-key="+">＋</button>
+    </div>
+    <div class="d-grid gap-2 mb-3">
+      <button class="btn btn-outline-danger" id="clear-btn">清除</button>
+      <button class="btn btn-primary big-btn" id="submit-count-btn">送出</button>
+    </div>
+    <div id="count-submit-error" class="alert alert-danger d-none"></div>
+
+    <h2 class="h6">已盤點明細</h2>
+    <ul class="entry-list list-unstyled" id="entry-list"></ul>
+  </section>
+
+  <!-- 掃描條碼疊層 -->
+  <div id="scanner-overlay" class="scanner-overlay d-none">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <span class="text-white">掃描產品條碼</span>
+      <button class="btn btn-light btn-sm" id="scanner-close">關閉</button>
+    </div>
+    <div id="reader"></div>
+  </div>
 
   <script src="lib/bootstrap.bundle.min.js"></script>
   <script src="lib/supabase.js"></script>
+  <script src="lib/html5-qrcode.min.js"></script>
   <script src="config.js"></script>
+  <script src="js/db.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
