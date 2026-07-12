@@ -431,20 +431,25 @@ function updateKeypadDisplay() {
 document.querySelectorAll(".keypad-grid button").forEach((btn) => {
   btn.addEventListener("click", () => {
     const key = btn.dataset.key;
-    let n = parseInt(keypadBuffer, 10) || 0;
-    if (key === "+") {
-      n += 1;
-      keypadBuffer = String(n);
-    } else if (key === "-") {
-      n = Math.max(0, n - 1);
-      keypadBuffer = String(n);
+    if (key === "back") {
+      // 刪除一個字，刪到空就回到 0
+      keypadBuffer = keypadBuffer.length > 1 ? keypadBuffer.slice(0, -1) : "0";
+    } else if (key === ".") {
+      // 小數點只能有一個
+      if (!keypadBuffer.includes(".")) keypadBuffer += ".";
     } else {
-      // 數字依序串接：按 1 再按 9 → "19"
+      // 數字依序串接：按 1 再按 9 → "19"；"0" 開頭直接取代避免 "05"
       keypadBuffer = keypadBuffer === "0" ? key : keypadBuffer + key;
     }
     updateKeypadDisplay();
   });
 });
+
+/// 讀取鍵盤目前的數量（支援小數），非法輸入回 0。
+function keypadValue() {
+  const n = parseFloat(keypadBuffer);
+  return Number.isFinite(n) ? n : 0;
+}
 
 document.getElementById("clear-btn").addEventListener("click", () => {
   keypadBuffer = "0";
@@ -462,7 +467,7 @@ function buildEntry(qty) {
 }
 
 document.getElementById("submit-count-btn").addEventListener("click", async () => {
-  const qty = parseInt(keypadBuffer, 10) || 0;
+  const qty = keypadValue();
   const errorEl = document.getElementById("count-submit-error");
   // 防呆：一般送出不接受 0，確定沒有庫存要走「無庫存」按鈕
   if (qty === 0) {
@@ -491,9 +496,10 @@ document.getElementById("cancel-correct-btn").addEventListener("click", () => se
 document.getElementById("force-correct-btn").addEventListener("click", async () => {
   const errorEl = document.getElementById("count-submit-error");
   errorEl.classList.add("d-none");
-  const newTotal = parseInt(keypadBuffer, 10) || 0;
+  const newTotal = keypadValue();
   const currentTotal = Number(currentItem.counted_qty) || 0;
-  const delta = newTotal - currentTotal;
+  // 小數運算會有浮點誤差（例如 2.5-2.4=0.099…），四捨五入到小數第 4 位
+  const delta = Math.round((newTotal - currentTotal) * 10000) / 10000;
   if (delta === 0) {
     errorEl.textContent = `目前已盤總數就是 ${currentTotal}，不需要更正`;
     errorEl.classList.remove("d-none");
@@ -512,6 +518,24 @@ async function submitEntry(entry) {
     markItemPending(entry.item_id);
     return;
   }
+
+  // 送出前檢查盤點單狀態：避免單已被確認/刪除，但手機沒重整還繼續盤（查詢失敗時不擋，交給下面的離線佇列邏輯）
+  try {
+    const { data: sheetRow, error: sheetErr } = await supabaseClient
+      .from("cloud_sheets").select("status").eq("id", currentSheet.id).maybeSingle();
+    if (!sheetErr) {
+      if (!sheetRow) {
+        errorEl.textContent = "此盤點單已被刪除，無法送出盤點，請返回重新選擇盤點單";
+        errorEl.classList.remove("d-none");
+        return;
+      }
+      if (sheetRow.status !== "開立中") {
+        errorEl.textContent = `此盤點單已確認完成（${sheetRow.status}），無法再送出盤點，請返回重新選擇盤點單`;
+        errorEl.classList.remove("d-none");
+        return;
+      }
+    }
+  } catch { /* 檢查失敗不擋送出 */ }
 
   const { error } = await supabaseClient.from("cloud_entries").insert(entry);
   if (error) {
