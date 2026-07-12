@@ -191,6 +191,37 @@ async function selectSheet(sheet) {
   }
   currentItems = data || [];
 
+  // 複盤單：抓同期同公司初盤單的品項，附上初盤狀態（未盤點/盤差）與盤差數量。
+  // 複盤進行中月結一定還沒跑（開立中複盤會擋月結），初盤的雲端資料保證還在。
+  if (sheet.type === "複盤") {
+    try {
+      const { data: initSheets } = await supabaseClient
+        .from("cloud_sheets").select("id")
+        .eq("period", sheet.period).eq("company", sheet.company).eq("type", "初盤");
+      const initIds = (initSheets || []).map((s) => s.id);
+      if (initIds.length > 0) {
+        const { data: initItems } = await supabaseClient
+          .from("cloud_items").select("item_no, lot_no, warehouse, status, counted_qty, book_qty")
+          .in("sheet_id", initIds);
+        const key = (i) => `${i.item_no}|${i.lot_no}|${i.warehouse}`;
+        const initMap = new Map((initItems || []).map((i) => [key(i), i]));
+        for (const item of currentItems) {
+          const init = initMap.get(key(item));
+          if (!init) continue;
+          if (init.status === "已盤點") {
+            item._initStatus = "盤差";
+            item._initQty = Number(init.counted_qty);
+            item._initVariance = Number(init.counted_qty) - Number(item.book_qty);
+          } else {
+            item._initStatus = "未盤點";
+          }
+        }
+      }
+    } catch (e) {
+      console.error("讀取初盤狀態失敗（不影響複盤作業）", e);
+    }
+  }
+
   const warehouses = [...new Set(currentItems.map((i) => i.warehouse).filter(Boolean))].sort();
   const whSelect = document.getElementById("warehouse-select");
   whSelect.innerHTML =
@@ -255,7 +286,7 @@ function renderItemsList() {
           <div class="small text-muted">${i.name}</div>
           <div class="item-attrs">規格：${i.spec || "-"}<span class="attr-sep">｜</span>批號：${i.lot_no || "-"}</div>
           <div class="item-attrs">有效日期：${i.expiry_date || "-"}</div>
-          <div class="small">帳面：${i.book_qty} ${i.unit}</div>
+          <div class="small">帳面：${i.book_qty} ${i.unit}${initialInfoHtml(i)}</div>
         </div>
       </div>`;
     })
@@ -343,13 +374,25 @@ document.getElementById("back-to-items").addEventListener("click", () => {
   showScreen("screen-items");
 });
 
+/// 複盤品項的初盤狀態徽章：「初盤：未盤點」或「初盤 X（盤差 ±Y）」；初盤單或查無資料時回空字串。
+function initialInfoHtml(item) {
+  if (item._initStatus === "未盤點") {
+    return '　<span class="badge bg-secondary">初盤：未盤點</span>';
+  }
+  if (item._initStatus === "盤差") {
+    const v = item._initVariance;
+    return `　<span class="badge bg-warning text-dark">初盤 ${item._initQty}（盤差 ${v > 0 ? "+" : ""}${v}）</span>`;
+  }
+  return "";
+}
+
 function renderCountItemInfo() {
   const item = currentItem;
   document.getElementById("count-item-info").innerHTML = `
     <strong>${item.item_no}</strong>　${item.name}<br/>
     <div class="item-attrs">規格：${item.spec || "-"}<span class="attr-sep">｜</span>批號：${item.lot_no || "-"}</div>
     <div class="item-attrs">有效日期：${item.expiry_date || "-"}</div>
-    <span class="small">帳面盤點數量：${item.book_qty} ${item.unit}　目前已盤：<strong>${item.counted_qty}</strong>（${item.status}）</span>
+    <span class="small">帳面盤點數量：${item.book_qty} ${item.unit}　目前已盤：<strong>${item.counted_qty}</strong>（${item.status}）${initialInfoHtml(item)}</span>
   `;
   // 未盤點：顯示「無庫存」、藏「更正總數」；已盤點：顯示「更正總數」、藏「無庫存」
   const counted = item.status === "已盤點";
