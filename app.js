@@ -20,6 +20,11 @@ let itemsChannel = null;
 let entriesChannel = null;
 let html5QrCode = null;
 
+/// 四捨五入到小數第 4 位，避免 JS 浮點數運算（例如 3.33-3）產生 0.33000000000000007 這類雜訊。
+function roundQty(n) {
+  return Math.round(Number(n) * 10000) / 10000;
+}
+
 // ---- 畫面切換 ----
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((el) => el.classList.remove("active"));
@@ -210,8 +215,8 @@ async function selectSheet(sheet) {
           if (!init) continue;
           if (init.status === "已盤點") {
             item._initStatus = "盤差";
-            item._initQty = Number(init.counted_qty);
-            item._initVariance = Number(init.counted_qty) - Number(item.book_qty);
+            item._initQty = roundQty(init.counted_qty);
+            item._initVariance = roundQty(Number(init.counted_qty) - Number(item.book_qty));
           } else {
             item._initStatus = "未盤點";
           }
@@ -239,32 +244,124 @@ async function selectSheet(sheet) {
 document.getElementById("back-to-select").addEventListener("click", () => {
   unsubscribeRealtime();
   currentSheet = null;
+  document.getElementById("cross-search-input").value = "";
+  document.getElementById("cross-search-results").innerHTML = "";
   showScreen("screen-select");
 });
+
+// ---- 跨公司搜尋盤點單品項（開始盤點頁面）：找到品項後直接跳進該筆的數量輸入畫面 ----
+document.getElementById("cross-search-btn").addEventListener("click", async () => {
+  if (!requireOperatorName()) return;
+  const kw = document.getElementById("cross-search-input").value.trim();
+  const resultsEl = document.getElementById("cross-search-results");
+  if (!kw) {
+    resultsEl.innerHTML = "";
+    return;
+  }
+  resultsEl.innerHTML = '<div class="text-muted small p-2">搜尋中…</div>';
+
+  const { data: sheets, error: sheetErr } = await supabaseClient
+    .from("cloud_sheets")
+    .select("id, period, company, type, status, require_all_counted")
+    .eq("status", "開立中");
+  if (sheetErr) {
+    resultsEl.innerHTML = `<div class="text-danger small p-2">搜尋失敗：${sheetErr.message}</div>`;
+    return;
+  }
+  if (!sheets || sheets.length === 0) {
+    resultsEl.innerHTML = '<div class="text-muted small p-2">目前沒有開立中的盤點單</div>';
+    return;
+  }
+  const sheetById = Object.fromEntries(sheets.map((s) => [s.id, s]));
+  const esc = kw.replace(/[%_]/g, "\\$&"); // 逸出萬用字元，避免使用者輸入的 % _ 被當成 SQL LIKE 特殊字元
+  const { data: items, error: itemErr } = await supabaseClient
+    .from("cloud_items")
+    .select("*")
+    .in("sheet_id", sheets.map((s) => s.id))
+    .or(`item_no.ilike.%${esc}%,name.ilike.%${esc}%,lot_no.ilike.%${esc}%`)
+    .limit(50);
+  if (itemErr) {
+    resultsEl.innerHTML = `<div class="text-danger small p-2">搜尋失敗：${itemErr.message}</div>`;
+    return;
+  }
+  if (!items || items.length === 0) {
+    resultsEl.innerHTML = '<div class="text-muted small p-2">沒有符合的品項</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = items
+    .map((i) => {
+      const s = sheetById[i.sheet_id];
+      const badgeClass = i.status === "已盤點" ? "badge-counted" : "badge-uncounted";
+      return `<button type="button" class="list-group-item list-group-item-action cross-search-result" data-item-id="${i.id}" data-sheet-id="${i.sheet_id}">
+        <div class="d-flex justify-content-between">
+          <strong>${i.item_no}</strong>
+          <span class="badge ${badgeClass}">${i.status}（${i.counted_qty}）</span>
+        </div>
+        <div class="small text-muted">${s.company}　${s.period}　${s.type}　倉別：${i.warehouse}</div>
+        <div class="small">${i.name}　批號：${i.lot_no || "-"}</div>
+      </button>`;
+    })
+    .join("");
+
+  resultsEl.querySelectorAll(".cross-search-result").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const sheetRow = sheetById[el.dataset.sheetId];
+      const itemRow = items.find((i) => i.id === el.dataset.itemId);
+      await jumpToItem(sheetRow, itemRow);
+    });
+  });
+});
+
+/// 從跨公司搜尋結果直接跳進指定盤點單的指定品項數量輸入畫面。
+async function jumpToItem(sheetRow, itemRow) {
+  currentType = sheetRow.type;
+  currentCompany = sheetRow.company;
+  await selectSheet(sheetRow);
+  const wh = document.getElementById("warehouse-select");
+  wh.value = itemRow.warehouse;
+  currentWarehouse = itemRow.warehouse;
+  renderItemsList();
+  const found = currentItems.find((i) => i.id === itemRow.id) || itemRow;
+  openCountScreen(found);
+}
 
 document.getElementById("warehouse-select").addEventListener("change", (e) => {
   currentWarehouse = e.target.value;
   document.getElementById("search-input").value = "";
+  document.getElementById("search-lot-input").value = "";
   renderItemsList();
 });
 
-// ---- 搜尋（搜尋框固定顯示，清除鈕一次清空） ----
+// ---- 搜尋（搜尋框固定顯示，清除鈕一次清空）----
+// 品號 + 批號兩個關鍵字都可獨立輸入、同時生效（AND）。
+// 未選倉別時搜尋會跨倉別找（此時品項卡片會多顯示倉別，方便辨識）；已選倉別時只在該倉別內搜尋。
 document.getElementById("search-input").addEventListener("input", renderItemsList);
 document.getElementById("search-clear-btn").addEventListener("click", () => {
   document.getElementById("search-input").value = "";
+  renderItemsList();
+});
+document.getElementById("search-lot-input").addEventListener("input", renderItemsList);
+document.getElementById("search-lot-clear-btn").addEventListener("click", () => {
+  document.getElementById("search-lot-input").value = "";
   renderItemsList();
 });
 
 // ---- 品項清單渲染 ----
 function renderItemsList() {
   const keyword = document.getElementById("search-input").value.trim().toLowerCase();
+  const lotKeyword = document.getElementById("search-lot-input").value.trim().toLowerCase();
+  const searching = keyword || lotKeyword;
+  const crossWarehouse = !currentWarehouse; // 沒選倉別時，搜尋要跨倉別找
+
   let list = currentItems;
   if (currentWarehouse) list = list.filter((i) => i.warehouse === currentWarehouse);
   if (keyword) list = list.filter((i) => i.item_no.toLowerCase().includes(keyword));
+  if (lotKeyword) list = list.filter((i) => (i.lot_no || "").toLowerCase().includes(lotKeyword));
 
   const container = document.getElementById("items-list");
-  if (!currentWarehouse) {
-    container.innerHTML = '<p class="text-muted text-center mt-3">請先選擇倉庫名稱</p>';
+  if (!currentWarehouse && !searching) {
+    container.innerHTML = '<p class="text-muted text-center mt-3">請先選擇倉庫名稱，或直接搜尋品號/批號（未選倉別時可跨倉別搜尋）</p>';
     return;
   }
   if (list.length === 0) {
@@ -286,7 +383,7 @@ function renderItemsList() {
           <div class="small text-muted">${i.name}</div>
           <div class="item-attrs">規格：${i.spec || "-"}<span class="attr-sep">｜</span>批號：${i.lot_no || "-"}</div>
           <div class="item-attrs">有效日期：${i.expiry_date || "-"}</div>
-          <div class="small">帳面：${i.book_qty} ${i.unit}${initialInfoHtml(i)}</div>
+          <div class="small">帳面：${i.book_qty} ${i.unit}${crossWarehouse ? `　倉別：${i.warehouse}` : ""}${initialInfoHtml(i)}</div>
         </div>
       </div>`;
     })
@@ -380,8 +477,8 @@ function initialInfoHtml(item) {
     return '　<span class="badge bg-secondary">初盤：未盤點</span>';
   }
   if (item._initStatus === "盤差") {
-    const v = item._initVariance;
-    return `　<span class="badge bg-warning text-dark">初盤 ${item._initQty}（盤差 ${v > 0 ? "+" : ""}${v}）</span>`;
+    const v = roundQty(item._initVariance);
+    return `　<span class="badge bg-warning text-dark">初盤 ${roundQty(item._initQty)}（盤差 ${v > 0 ? "+" : ""}${v}）</span>`;
   }
   return "";
 }
@@ -498,8 +595,7 @@ document.getElementById("force-correct-btn").addEventListener("click", async () 
   errorEl.classList.add("d-none");
   const newTotal = keypadValue();
   const currentTotal = Number(currentItem.counted_qty) || 0;
-  // 小數運算會有浮點誤差（例如 2.5-2.4=0.099…），四捨五入到小數第 4 位
-  const delta = Math.round((newTotal - currentTotal) * 10000) / 10000;
+  const delta = roundQty(newTotal - currentTotal);
   if (delta === 0) {
     errorEl.textContent = `目前已盤總數就是 ${currentTotal}，不需要更正`;
     errorEl.classList.remove("d-none");

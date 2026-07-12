@@ -69,6 +69,15 @@
     </div>
 
     <div class="mb-3">
+      <label class="form-label">或搜尋盤點單品項（跨公司，只搜尋開立中的盤點單）</label>
+      <div class="input-group">
+        <input type="text" class="form-control" id="cross-search-input" placeholder="輸入品號/品名/批號關鍵字" />
+        <button class="btn btn-outline-primary" type="button" id="cross-search-btn">搜尋</button>
+      </div>
+      <div id="cross-search-results" class="list-group mt-2"></div>
+    </div>
+
+    <div class="mb-3">
       <label class="form-label">盤點階段</label>
       <div class="d-grid gap-2">
         <button class="btn btn-outline-primary big-btn select-type" data-type="初盤">初盤</button>
@@ -107,9 +116,13 @@
     </div>
 
     <div class="mb-2">
-      <div class="input-group">
+      <div class="input-group mb-2">
         <input type="text" class="form-control" id="search-input" placeholder="🔍 搜尋品號關鍵字" />
         <button class="btn btn-outline-secondary" type="button" id="search-clear-btn">清除</button>
+      </div>
+      <div class="input-group">
+        <input type="text" class="form-control" id="search-lot-input" placeholder="🔍 搜尋批號關鍵字" />
+        <button class="btn btn-outline-secondary" type="button" id="search-lot-clear-btn">清除</button>
       </div>
     </div>
     <div class="d-grid mb-2">

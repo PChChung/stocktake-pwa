@@ -1,6 +1,6 @@
 // Service Worker：離線快取全部靜態資源，讓 PWA 加入主畫面後不需網路也能開啟（掃碼、盤點畫面）。
 // 部署指南 §3：每次改版記得把 CACHE_VERSION 往上加一版，否則手機會一直吃到舊快取。
-const CACHE_VERSION = "stocktake-v9";
+const CACHE_VERSION = "stocktake-v10";
 
 const PRECACHE_URLS = [
   "./",
