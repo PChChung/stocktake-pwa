@@ -31,6 +31,11 @@
     .item-attrs { font-size: 0.95rem; color: #212529; }
     /* 規格與批號同一行，用直線明確區隔 */
     .attr-sep { color: #adb5bd; padding: 0 8px; }
+    /* 開始盤點頁面：上方（人員/搜尋）用淺底卡片，跟下方（選盤點階段）明顯區隔 */
+    .input-panel { background: #eaf5f1; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+    .stage-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; color: #6c757d; font-size: 0.85rem; }
+    .stage-divider::before, .stage-divider::after { content: ""; flex: 1; height: 1px; background: #dee2e6; }
+    .stage-panel { background: #fff; border: 1px solid #dee2e6; border-radius: 10px; padding: 16px; }
   </style>
 </head>
 <body>
@@ -63,42 +68,48 @@
       </div>
     </div>
 
-    <div class="mb-3">
-      <label class="form-label">目前盤點人員（必填，每一筆盤點紀錄都會記這個姓名）</label>
-      <input type="text" class="form-control" id="operator-name-input" placeholder="必填：輸入姓名後才能開始盤點" />
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">或搜尋盤點單品項（跨公司，只搜尋開立中的盤點單）</label>
-      <div class="input-group">
-        <input type="text" class="form-control" id="cross-search-input" placeholder="輸入品號/品名/批號關鍵字" />
-        <button class="btn btn-outline-primary" type="button" id="cross-search-btn">搜尋</button>
+    <div class="input-panel">
+      <div class="mb-3">
+        <label class="form-label">目前盤點人員（必填，每一筆盤點紀錄都會記這個姓名）</label>
+        <input type="text" class="form-control" id="operator-name-input" placeholder="必填：輸入姓名後才能開始盤點" />
       </div>
-      <div id="cross-search-results" class="list-group mt-2"></div>
-    </div>
 
-    <div class="mb-3">
-      <label class="form-label">盤點階段</label>
-      <div class="d-grid gap-2">
-        <button class="btn btn-outline-primary big-btn select-type" data-type="初盤">初盤</button>
-        <button class="btn btn-outline-primary big-btn select-type" data-type="複盤">複盤</button>
+      <div class="mb-0">
+        <label class="form-label">或搜尋盤點單品項（跨公司，只搜尋開立中的盤點單）</label>
+        <div class="input-group">
+          <input type="text" class="form-control" id="cross-search-input" placeholder="輸入品號/品名/批號關鍵字" />
+          <button class="btn btn-outline-primary" type="button" id="cross-search-btn">搜尋</button>
+        </div>
+        <div id="cross-search-results" class="list-group mt-2"></div>
       </div>
     </div>
 
-    <div id="company-area" class="mb-3 d-none">
-      <label class="form-label">公司別</label>
-      <div class="d-grid gap-2">
-        <button class="btn btn-outline-primary big-btn select-company" data-company="英美醫療器材有限公司">英美醫療器材有限公司</button>
-        <button class="btn btn-outline-primary big-btn select-company" data-company="晃聖有限公司">晃聖有限公司</button>
-        <button class="btn btn-outline-primary big-btn select-company" data-company="育聖企業有限公司">育聖企業有限公司</button>
+    <div class="stage-divider">開始盤點</div>
+
+    <div class="stage-panel">
+      <div class="mb-3">
+        <label class="form-label">盤點階段</label>
+        <div class="d-grid gap-2">
+          <button class="btn btn-outline-primary big-btn select-type" data-type="初盤">初盤</button>
+          <button class="btn btn-outline-primary big-btn select-type" data-type="複盤">複盤</button>
+        </div>
       </div>
-    </div>
 
-    <div id="no-sheet-msg" class="alert alert-secondary d-none">目前非盤點期間，請洽管理者。</div>
+      <div id="company-area" class="mb-0 d-none">
+        <label class="form-label">公司別</label>
+        <div class="d-grid gap-2">
+          <button class="btn btn-outline-primary big-btn select-company" data-company="英美醫療器材有限公司">英美醫療器材有限公司</button>
+          <button class="btn btn-outline-primary big-btn select-company" data-company="晃聖有限公司">晃聖有限公司</button>
+          <button class="btn btn-outline-primary big-btn select-company" data-company="育聖企業有限公司">育聖企業有限公司</button>
+        </div>
+      </div>
 
-    <div id="sheet-pick-area" class="d-none">
-      <label class="form-label">選擇盤點單</label>
-      <div id="sheet-pick-list" class="list-group"></div>
+      <div id="no-sheet-msg" class="alert alert-secondary d-none mt-3 mb-0">目前非盤點期間，請洽管理者。</div>
+
+      <div id="sheet-pick-area" class="d-none mt-3">
+        <label class="form-label">選擇盤點單</label>
+        <div id="sheet-pick-list" class="list-group"></div>
+      </div>
     </div>
   </section>
 
