@@ -10,13 +10,13 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 let session = null;
 let isAdmin = false;
 let currentType = null;
-let currentCompany = null;
-let currentSheet = null; // { id, period, company, type, require_all_counted, status }
-let currentItems = []; // cloud_items 陣列
+let currentSheets = []; // 目前類型（初盤/複盤）跨公司所有「開立中」的盤點單
+let sheetsById = {};
+let currentItems = []; // cloud_items 陣列，每筆額外帶 company/period（來自所屬 sheet）
 let currentWarehouse = "";
 let currentItem = null;
 let keypadBuffer = "0";
-let itemsChannel = null;
+let itemsChannels = [];
 let entriesChannel = null;
 let html5QrCode = null;
 
@@ -81,6 +81,7 @@ async function restoreSession() {
     isAdmin = session.user.app_metadata?.role === "admin";
     document.getElementById("who").textContent =
       (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
+    document.getElementById("admin-tools-area").classList.toggle("d-none", !isAdmin);
     showScreen("screen-select");
   } else {
     showScreen("screen-login");
@@ -104,6 +105,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   isAdmin = session.user.app_metadata?.role === "admin";
   document.getElementById("who").textContent =
     (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
+  document.getElementById("admin-tools-area").classList.toggle("d-none", !isAdmin);
   document.getElementById("operator-name-input").value = ""; // 每次登入都要重新填寫盤點人員
   showScreen("screen-select");
 });
@@ -114,117 +116,61 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   showScreen("screen-login");
 });
 
-// ---- 選擇 初盤/複盤 + 公司 ----
+// ---- 選擇 初盤/複盤（跨公司）----
 document.querySelectorAll(".select-type").forEach((btn) => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     if (!requireOperatorName()) return; // 沒填盤點人員姓名不能進入盤點
-    currentType = btn.dataset.type;
     document.querySelectorAll(".select-type").forEach((b) => b.classList.remove("btn-primary", "btn-outline-primary"));
     btn.classList.add("btn-primary");
     document.querySelectorAll(".select-type").forEach((b) => { if (b !== btn) b.classList.add("btn-outline-primary"); });
-    document.getElementById("company-area").classList.remove("d-none");
-    document.getElementById("no-sheet-msg").classList.add("d-none");
-    document.getElementById("sheet-pick-area").classList.add("d-none");
+    await loadItemsForType(btn.dataset.type);
   });
 });
 
-document.querySelectorAll(".select-company").forEach((btn) => {
-  btn.addEventListener("click", async () => {
-    currentCompany = btn.dataset.company;
-    document.querySelectorAll(".select-company").forEach((b) => b.classList.remove("btn-primary", "btn-outline-primary"));
-    btn.classList.add("btn-primary");
-    document.querySelectorAll(".select-company").forEach((b) => { if (b !== btn) b.classList.add("btn-outline-primary"); });
-    await loadOpenSheets();
-  });
-});
-
-async function loadOpenSheets() {
-  const noSheetMsg = document.getElementById("no-sheet-msg");
-  const pickArea = document.getElementById("sheet-pick-area");
-  noSheetMsg.classList.add("d-none");
-  pickArea.classList.add("d-none");
-
-  const { data, error } = await supabaseClient
-    .from("cloud_sheets")
-    .select("id, period, company, type, status, require_all_counted, created_at")
-    .eq("type", currentType)
-    .eq("company", currentCompany)
-    .eq("status", "開立中")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    alert("讀取盤點單失敗：" + error.message);
-    return;
-  }
-
-  if (!data || data.length === 0) {
-    noSheetMsg.classList.remove("d-none");
-    return;
-  }
-
-  if (data.length === 1) {
-    await selectSheet(data[0]);
-    return;
-  }
-
-  const listEl = document.getElementById("sheet-pick-list");
-  listEl.innerHTML = data
-    .map(
-      (s) => `<button class="list-group-item list-group-item-action" data-id="${s.id}">
-        ${s.period} － 建立於 ${new Date(s.created_at).toLocaleString()}
-      </button>`
-    )
-    .join("");
-  listEl.querySelectorAll("button").forEach((b) => {
-    b.addEventListener("click", () => {
-      const sheet = data.find((s) => s.id === b.dataset.id);
-      selectSheet(sheet);
-    });
-  });
-  pickArea.classList.remove("d-none");
-}
-
-// ---- 選定盤點單 → 載入品項 ----
-async function selectSheet(sheet) {
-  currentSheet = sheet;
+// ---- 載入某盤點類型（初盤/複盤）跨所有公司「開立中」的品項，合併成單一清單 ----
+async function loadItemsForType(type) {
+  currentType = type;
   currentWarehouse = "";
 
-  const { data, error } = await supabaseClient.from("cloud_items").select("*").eq("sheet_id", sheet.id).order("item_no");
-  if (error) {
-    alert("讀取品項失敗：" + error.message);
+  const { data: sheets, error: sheetErr } = await supabaseClient
+    .from("cloud_sheets")
+    .select("id, period, company, type, status, require_all_counted, created_at")
+    .eq("type", type)
+    .eq("status", "開立中");
+  if (sheetErr) {
+    alert("讀取盤點單失敗：" + sheetErr.message);
     return;
   }
-  currentItems = data || [];
 
-  // 複盤單：抓同期同公司初盤單的品項，附上初盤狀態（未盤點/盤差）與盤差數量。
+  currentSheets = sheets || [];
+  sheetsById = Object.fromEntries(currentSheets.map((s) => [s.id, s]));
+  document.getElementById("sheet-title").textContent = `${type}（跨公司）`;
+  document.getElementById("warehouse-select").innerHTML = '<option value="">請選擇倉庫名稱</option>';
+
+  if (currentSheets.length === 0) {
+    currentItems = [];
+    document.getElementById("items-list").innerHTML = '<p class="text-muted text-center mt-3">目前非盤點期間，請洽管理者。</p>';
+    unsubscribeRealtime();
+    showScreen("screen-items");
+    return;
+  }
+
+  const { data: items, error: itemErr } = await supabaseClient
+    .from("cloud_items").select("*").in("sheet_id", currentSheets.map((s) => s.id)).order("item_no");
+  if (itemErr) {
+    alert("讀取品項失敗：" + itemErr.message);
+    return;
+  }
+  currentItems = (items || []).map((i) => ({
+    ...i,
+    company: sheetsById[i.sheet_id].company,
+    period: sheetsById[i.sheet_id].period,
+  }));
+
+  // 複盤：依「公司＋期間」逐一找對應初盤單，附上初盤狀態（未盤點/盤差）與盤差數量。
   // 複盤進行中月結一定還沒跑（開立中複盤會擋月結），初盤的雲端資料保證還在。
-  if (sheet.type === "複盤") {
-    try {
-      const { data: initSheets } = await supabaseClient
-        .from("cloud_sheets").select("id")
-        .eq("period", sheet.period).eq("company", sheet.company).eq("type", "初盤");
-      const initIds = (initSheets || []).map((s) => s.id);
-      if (initIds.length > 0) {
-        const { data: initItems } = await supabaseClient
-          .from("cloud_items").select("item_no, lot_no, warehouse, status, counted_qty, book_qty")
-          .in("sheet_id", initIds);
-        const key = (i) => `${i.item_no}|${i.lot_no}|${i.warehouse}`;
-        const initMap = new Map((initItems || []).map((i) => [key(i), i]));
-        for (const item of currentItems) {
-          const init = initMap.get(key(item));
-          if (!init) continue;
-          if (init.status === "已盤點") {
-            item._initStatus = "盤差";
-            item._initQty = roundQty(init.counted_qty);
-            item._initVariance = roundQty(Number(init.counted_qty) - Number(item.book_qty));
-          } else {
-            item._initStatus = "未盤點";
-          }
-        }
-      }
-    } catch (e) {
-      console.error("讀取初盤狀態失敗（不影響複盤作業）", e);
-    }
+  if (type === "複盤") {
+    await attachInitialStatus(currentSheets, currentItems);
   }
 
   const warehouses = [...new Set(currentItems.map((i) => i.warehouse).filter(Boolean))].sort();
@@ -232,18 +178,53 @@ async function selectSheet(sheet) {
   whSelect.innerHTML =
     '<option value="">請選擇倉庫名稱</option>' + warehouses.map((w) => `<option value="${w}">${w}</option>`).join("");
 
-  document.getElementById("sheet-title").textContent = `${sheet.company} ${sheet.period} ${sheet.type}`;
   document.getElementById("items-list").innerHTML = "";
-  document.getElementById("admin-confirm-area").classList.toggle("d-none", !isAdmin);
-  document.getElementById("confirm-sheet-btn").textContent = `確認完成${sheet.type}`;
 
-  subscribeRealtime(sheet.id);
+  subscribeRealtimeMulti(currentSheets.map((s) => s.id));
   showScreen("screen-items");
+  renderItemsList();
+}
+
+/// 複盤品項的初盤狀態比對：依「公司＋期間」逐一查詢對應初盤單，配對鍵加上公司避免跨公司同品號誤配。
+async function attachInitialStatus(recountSheets, items) {
+  const pairs = [...new Map(recountSheets.map((s) => [`${s.company}|${s.period}`, { company: s.company, period: s.period }])).values()];
+  if (pairs.length === 0) return;
+  try {
+    const initSheetLists = await Promise.all(
+      pairs.map((p) =>
+        supabaseClient.from("cloud_sheets").select("id, company").eq("type", "初盤").eq("company", p.company).eq("period", p.period)
+      )
+    );
+    const initSheets = initSheetLists.flatMap((r) => r.data || []);
+    const initIds = initSheets.map((s) => s.id);
+    if (initIds.length === 0) return;
+    const initSheetById = Object.fromEntries(initSheets.map((s) => [s.id, s]));
+
+    const { data: initItems } = await supabaseClient
+      .from("cloud_items").select("sheet_id, item_no, lot_no, warehouse, status, counted_qty, book_qty")
+      .in("sheet_id", initIds);
+    const key = (company, i) => `${company}|${i.item_no}|${i.lot_no}|${i.warehouse}`;
+    const initMap = new Map((initItems || []).map((i) => [key(initSheetById[i.sheet_id].company, i), i]));
+    for (const item of items) {
+      const init = initMap.get(key(item.company, item));
+      if (!init) continue;
+      if (init.status === "已盤點") {
+        item._initStatus = "盤差";
+        item._initQty = roundQty(init.counted_qty);
+        item._initVariance = roundQty(Number(init.counted_qty) - Number(item.book_qty));
+      } else {
+        item._initStatus = "未盤點";
+      }
+    }
+  } catch (e) {
+    console.error("讀取初盤狀態失敗（不影響複盤作業）", e);
+  }
 }
 
 document.getElementById("back-to-select").addEventListener("click", () => {
   unsubscribeRealtime();
-  currentSheet = null;
+  currentSheets = [];
+  currentItems = [];
   document.getElementById("cross-search-input").value = "";
   document.getElementById("cross-search-results").innerHTML = "";
   showScreen("screen-select");
@@ -313,11 +294,9 @@ document.getElementById("cross-search-btn").addEventListener("click", async () =
   });
 });
 
-/// 從跨公司搜尋結果直接跳進指定盤點單的指定品項數量輸入畫面。
+/// 從跨公司搜尋結果直接跳進指定品項的數量輸入畫面。
 async function jumpToItem(sheetRow, itemRow) {
-  currentType = sheetRow.type;
-  currentCompany = sheetRow.company;
-  await selectSheet(sheetRow);
+  await loadItemsForType(sheetRow.type);
   const wh = document.getElementById("warehouse-select");
   wh.value = itemRow.warehouse;
   currentWarehouse = itemRow.warehouse;
@@ -352,7 +331,6 @@ function renderItemsList() {
   const keyword = document.getElementById("search-input").value.trim().toLowerCase();
   const lotKeyword = document.getElementById("search-lot-input").value.trim().toLowerCase();
   const searching = keyword || lotKeyword;
-  const crossWarehouse = !currentWarehouse; // 沒選倉別時，搜尋要跨倉別找
 
   let list = currentItems;
   if (currentWarehouse) list = list.filter((i) => i.warehouse === currentWarehouse);
@@ -361,7 +339,7 @@ function renderItemsList() {
 
   const container = document.getElementById("items-list");
   if (!currentWarehouse && !searching) {
-    container.innerHTML = '<p class="text-muted text-center mt-3">請先選擇倉庫名稱，或直接搜尋品號/批號（未選倉別時可跨倉別搜尋）</p>';
+    container.innerHTML = '<p class="text-muted text-center mt-3">請先選擇倉庫名稱，或直接搜尋品號/批號（未選倉別時可跨倉別、跨公司搜尋）</p>';
     return;
   }
   if (list.length === 0) {
@@ -373,17 +351,18 @@ function renderItemsList() {
     .map((i) => {
       const badgeClass = i.status === "已盤點" ? "badge-counted" : "badge-uncounted";
       // 複盤流程時按鈕/狀態文字要顯示「已盤點/複盤」（需求書用字），初盤維持「已盤點」
-      const statusLabel = i.status === "已盤點" && currentSheet?.type === "複盤" ? "已盤點/複盤" : i.status;
+      const statusLabel = i.status === "已盤點" && currentType === "複盤" ? "已盤點/複盤" : i.status;
       return `<div class="card mb-2 item-row" data-item-id="${i.id}">
         <div class="card-body py-2 px-3">
           <div class="d-flex justify-content-between">
-            <strong>${i.item_no}</strong>
+            <span class="item-no-lg">${i.item_no}</span>
             <span class="badge ${badgeClass}">${statusLabel}（${i.counted_qty}）</span>
           </div>
           <div class="small text-muted">${i.name}</div>
-          <div class="item-attrs">規格：${i.spec || "-"}<span class="attr-sep">｜</span>批號：${i.lot_no || "-"}</div>
+          <div class="item-attrs">公司別：${i.company}<span class="attr-sep">｜</span>倉別：${i.warehouse}</div>
+          <div class="item-attrs">規格：${i.spec || "-"}<span class="attr-sep">｜</span>批號：<span class="lot-no-lg">${i.lot_no || "-"}</span></div>
           <div class="item-attrs">有效日期：${i.expiry_date || "-"}</div>
-          <div class="small">帳面：${i.book_qty} ${i.unit}${crossWarehouse ? `　倉別：${i.warehouse}` : ""}${initialInfoHtml(i)}</div>
+          <div class="small">帳面：${i.book_qty} ${i.unit}${initialInfoHtml(i)}</div>
         </div>
       </div>`;
     })
@@ -408,24 +387,24 @@ function updateItemInPlace(updated) {
   }
 }
 
-// ---- Realtime 訂閱：任何人送出數量，其他人畫面即時更新 ----
-function subscribeRealtime(sheetId) {
+// ---- Realtime 訂閱：任何人送出數量，其他人畫面即時更新（跨公司清單要同時訂多張單）----
+function subscribeRealtimeMulti(sheetIds) {
   unsubscribeRealtime();
-  itemsChannel = supabaseClient
-    .channel(`items-${sheetId}`)
-    .on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "cloud_items", filter: `sheet_id=eq.${sheetId}` },
-      (payload) => updateItemInPlace(payload.new)
-    )
-    .subscribe();
+  itemsChannels = sheetIds.map((sheetId) =>
+    supabaseClient
+      .channel(`items-${sheetId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "cloud_items", filter: `sheet_id=eq.${sheetId}` },
+        (payload) => updateItemInPlace(payload.new)
+      )
+      .subscribe()
+  );
 }
 
 function unsubscribeRealtime() {
-  if (itemsChannel) {
-    supabaseClient.removeChannel(itemsChannel);
-    itemsChannel = null;
-  }
+  itemsChannels.forEach((ch) => supabaseClient.removeChannel(ch));
+  itemsChannels = [];
 }
 
 // ---- 掃描條碼 ----
@@ -486,8 +465,9 @@ function initialInfoHtml(item) {
 function renderCountItemInfo() {
   const item = currentItem;
   document.getElementById("count-item-info").innerHTML = `
-    <strong>${item.item_no}</strong>　${item.name}<br/>
-    <div class="item-attrs">規格：${item.spec || "-"}<span class="attr-sep">｜</span>批號：${item.lot_no || "-"}</div>
+    <span class="item-no-lg">${item.item_no}</span>　${item.name}<br/>
+    <div class="item-attrs">公司別：${item.company}<span class="attr-sep">｜</span>倉別：${item.warehouse}</div>
+    <div class="item-attrs">規格：${item.spec || "-"}<span class="attr-sep">｜</span>批號：<span class="lot-no-lg">${item.lot_no || "-"}</span></div>
     <div class="item-attrs">有效日期：${item.expiry_date || "-"}</div>
     <span class="small">帳面盤點數量：${item.book_qty} ${item.unit}　目前已盤：<strong>${item.counted_qty}</strong>（${item.status}）${initialInfoHtml(item)}</span>
   `;
@@ -522,7 +502,8 @@ function openCountScreen(item) {
 }
 
 function updateKeypadDisplay() {
-  document.getElementById("keypad-display").textContent = keypadBuffer;
+  // 內部用 "*" 儲存乘號方便解析，顯示時換成 "×" 比較好讀
+  document.getElementById("keypad-display").textContent = keypadBuffer.replace("*", "×");
 }
 
 document.querySelectorAll(".keypad-grid button").forEach((btn) => {
@@ -540,6 +521,30 @@ document.querySelectorAll(".keypad-grid button").forEach((btn) => {
     }
     updateKeypadDisplay();
   });
+});
+
+// ---- 計算機乘法：例如輸入 3×10，按「＝」算出 30 後才能送出（不是每個品項都需要，直接輸入數量照舊可用）----
+document.getElementById("calc-multiply-btn").addEventListener("click", () => {
+  // 最多一個乘號，且乘號前面要有數字（不能是空的或還是初始的 "0"）
+  if (keypadBuffer.includes("*") || keypadBuffer === "0") return;
+  keypadBuffer += "*";
+  updateKeypadDisplay();
+});
+
+document.getElementById("calc-equals-btn").addEventListener("click", () => {
+  const errorEl = document.getElementById("count-submit-error");
+  if (!keypadBuffer.includes("*")) return; // 沒有乘號就不用算，維持原數字
+  const [left, right] = keypadBuffer.split("*");
+  const a = parseFloat(left);
+  const b = parseFloat(right);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) {
+    errorEl.textContent = "算式不完整，例如：3×10";
+    errorEl.classList.remove("d-none");
+    return;
+  }
+  errorEl.classList.add("d-none");
+  keypadBuffer = String(roundQty(a * b));
+  updateKeypadDisplay();
 });
 
 /// 讀取鍵盤目前的數量（支援小數），非法輸入回 0。
@@ -564,8 +569,14 @@ function buildEntry(qty) {
 }
 
 document.getElementById("submit-count-btn").addEventListener("click", async () => {
-  const qty = keypadValue();
   const errorEl = document.getElementById("count-submit-error");
+  // 算式還沒按「＝」算出結果，不能直接送出（避免誤送出算式裡的第一個數字）
+  if (keypadBuffer.includes("*")) {
+    errorEl.textContent = "請先按「＝」算出結果，再送出";
+    errorEl.classList.remove("d-none");
+    return;
+  }
+  const qty = keypadValue();
   // 防呆：一般送出不接受 0，確定沒有庫存要走「無庫存」按鈕
   if (qty === 0) {
     errorEl.textContent = "數量為 0：如果確定這個品項沒有庫存，請按「無庫存」按鈕送出";
@@ -593,6 +604,12 @@ document.getElementById("cancel-correct-btn").addEventListener("click", () => se
 document.getElementById("force-correct-btn").addEventListener("click", async () => {
   const errorEl = document.getElementById("count-submit-error");
   errorEl.classList.add("d-none");
+  // 算式還沒按「＝」算出結果，不能直接當成正確總數送出
+  if (keypadBuffer.includes("*")) {
+    errorEl.textContent = "請先按「＝」算出結果，再更正";
+    errorEl.classList.remove("d-none");
+    return;
+  }
   const newTotal = keypadValue();
   const currentTotal = Number(currentItem.counted_qty) || 0;
   const delta = roundQty(newTotal - currentTotal);
@@ -618,7 +635,7 @@ async function submitEntry(entry) {
   // 送出前檢查盤點單狀態：避免單已被確認/刪除，但手機沒重整還繼續盤（查詢失敗時不擋，交給下面的離線佇列邏輯）
   try {
     const { data: sheetRow, error: sheetErr } = await supabaseClient
-      .from("cloud_sheets").select("status").eq("id", currentSheet.id).maybeSingle();
+      .from("cloud_sheets").select("status").eq("id", currentItem.sheet_id).maybeSingle();
     if (!sheetErr) {
       if (!sheetRow) {
         errorEl.textContent = "此盤點單已被刪除，無法送出盤點，請返回重新選擇盤點單";
@@ -716,16 +733,76 @@ async function flushQueue() {
 }
 setInterval(flushQueue, 30000);
 
-// ---- 確認完成初盤/複盤（Admin） ----
-document.getElementById("confirm-sheet-btn").addEventListener("click", async () => {
-  const errorEl = document.getElementById("confirm-error");
+// ---- 確認完成初盤/複盤（Admin 專屬獨立頁面，跨公司列出所有開立中的盤點單）----
+document.getElementById("admin-confirm-btn").addEventListener("click", async () => {
+  showScreen("screen-admin-confirm");
+  await loadAdminConfirmList();
+});
+
+document.getElementById("back-from-admin-confirm").addEventListener("click", () => {
+  showScreen("screen-select");
+});
+
+async function loadAdminConfirmList() {
+  const listEl = document.getElementById("admin-confirm-list");
+  listEl.innerHTML = '<p class="text-muted text-center mt-3">讀取中…</p>';
+
+  const { data: sheets, error } = await supabaseClient
+    .from("cloud_sheets")
+    .select("id, period, company, type, status, require_all_counted, created_at")
+    .eq("status", "開立中")
+    .order("period", { ascending: false });
+
+  if (error) {
+    listEl.innerHTML = `<div class="alert alert-danger">讀取失敗：${error.message}</div>`;
+    return;
+  }
+  if (!sheets || sheets.length === 0) {
+    listEl.innerHTML = '<p class="text-muted text-center mt-3">目前沒有開立中的盤點單</p>';
+    return;
+  }
+
+  // 逐張單查已盤點/總品項數，供畫面顯示進度
+  const rows = await Promise.all(
+    sheets.map(async (s) => {
+      const { count: total } = await supabaseClient
+        .from("cloud_items").select("id", { count: "exact", head: true }).eq("sheet_id", s.id);
+      const { count: counted } = await supabaseClient
+        .from("cloud_items").select("id", { count: "exact", head: true }).eq("sheet_id", s.id).eq("status", "已盤點");
+      return { ...s, total: total || 0, counted: counted || 0 };
+    })
+  );
+
+  listEl.innerHTML = rows
+    .map(
+      (s) => `<div class="card mb-2">
+        <div class="card-body py-2 px-3">
+          <div class="d-flex justify-content-between">
+            <strong>${s.company}</strong>
+            <span class="badge bg-secondary">${s.period}　${s.type}</span>
+          </div>
+          <div class="small text-muted mb-2">已盤點 ${s.counted} / ${s.total} 項</div>
+          <button class="btn btn-success btn-sm w-100 admin-confirm-row-btn" data-sheet-id="${s.id}">確認完成${s.type}</button>
+          <div class="alert alert-danger py-1 px-2 mt-2 d-none small admin-confirm-row-error" data-sheet-id="${s.id}"></div>
+        </div>
+      </div>`
+    )
+    .join("");
+
+  listEl.querySelectorAll(".admin-confirm-row-btn").forEach((btn) => {
+    btn.addEventListener("click", () => confirmSheet(rows.find((s) => s.id === btn.dataset.sheetId)));
+  });
+}
+
+async function confirmSheet(sheet) {
+  const errorEl = document.querySelector(`.admin-confirm-row-error[data-sheet-id="${sheet.id}"]`);
   errorEl.classList.add("d-none");
 
-  if (currentSheet.require_all_counted) {
+  if (sheet.require_all_counted) {
     const { data, error } = await supabaseClient
       .from("cloud_items")
       .select("id", { count: "exact" })
-      .eq("sheet_id", currentSheet.id)
+      .eq("sheet_id", sheet.id)
       .eq("status", "未盤點");
     if (error) {
       errorEl.textContent = "檢查未盤點項目失敗：" + error.message;
@@ -733,11 +810,13 @@ document.getElementById("confirm-sheet-btn").addEventListener("click", async () 
       return;
     }
     if (data.length > 0) {
-      errorEl.textContent = `還有 ${data.length} 項未盤點，無法確認完成${currentSheet.type}`;
+      errorEl.textContent = `還有 ${data.length} 項未盤點，無法確認完成${sheet.type}`;
       errorEl.classList.remove("d-none");
       return;
     }
   }
+
+  if (!confirm(`確定要確認完成「${sheet.company} ${sheet.period} ${sheet.type}」嗎？`)) return;
 
   const { error } = await supabaseClient
     .from("cloud_sheets")
@@ -746,7 +825,7 @@ document.getElementById("confirm-sheet-btn").addEventListener("click", async () 
       confirmed_by: session.user.user_metadata?.display_name || session.user.email,
       confirmed_at: new Date().toISOString(),
     })
-    .eq("id", currentSheet.id);
+    .eq("id", sheet.id);
 
   if (error) {
     errorEl.textContent = "確認失敗：" + error.message;
@@ -754,10 +833,8 @@ document.getElementById("confirm-sheet-btn").addEventListener("click", async () 
     return;
   }
 
-  alert(`已確認完成${currentSheet.type}`);
-  unsubscribeRealtime();
-  showScreen("screen-select");
-});
+  await loadAdminConfirmList();
+}
 
 // ---- Service Worker ----
 if ("serviceWorker" in navigator) {

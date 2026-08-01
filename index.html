@@ -31,6 +31,10 @@
     .item-attrs { font-size: 0.95rem; color: #212529; }
     /* 規格與批號同一行，用直線明確區隔 */
     .attr-sep { color: #adb5bd; padding: 0 8px; }
+    /* 品號、批號是倉庫現場辨識品項的主要依據，放大加粗 */
+    .item-no-lg { font-size: 1.15rem; font-weight: 700; }
+    .lot-no-lg { font-weight: 700; }
+    .calc-row button { font-size: 1.3rem; padding: 14px 0; }
     /* 開始盤點頁面：上方（人員/搜尋）用淺底卡片，跟下方（選盤點階段）明顯區隔 */
     .input-panel { background: #eaf5f1; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
     .stage-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; color: #6c757d; font-size: 0.85rem; }
@@ -58,7 +62,7 @@
     </form>
   </section>
 
-  <!-- 選擇 初盤/複盤 + 公司 -->
+  <!-- 選擇 初盤/複盤（跨公司，選完直接進品項畫面） -->
   <section id="screen-select" class="screen">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h1 class="h5 mb-0">開始盤點</h1>
@@ -66,6 +70,10 @@
         <span id="who" class="text-muted small me-2"></span>
         <button class="btn btn-outline-secondary btn-sm" id="logout-btn">登出</button>
       </div>
+    </div>
+
+    <div id="admin-tools-area" class="mb-3 d-none">
+      <button class="btn btn-outline-success w-100" id="admin-confirm-btn">🗂️ 管理：確認完成盤點單</button>
     </div>
 
     <div class="input-panel">
@@ -87,30 +95,22 @@
     <div class="stage-divider">開始盤點</div>
 
     <div class="stage-panel">
-      <div class="mb-3">
-        <label class="form-label">盤點階段</label>
-        <div class="d-grid gap-2">
-          <button class="btn btn-outline-primary big-btn select-type" data-type="初盤">初盤</button>
-          <button class="btn btn-outline-primary big-btn select-type" data-type="複盤">複盤</button>
-        </div>
-      </div>
-
-      <div id="company-area" class="mb-0 d-none">
-        <label class="form-label">公司別</label>
-        <div class="d-grid gap-2">
-          <button class="btn btn-outline-primary big-btn select-company" data-company="英美醫療器材有限公司">英美醫療器材有限公司</button>
-          <button class="btn btn-outline-primary big-btn select-company" data-company="晃聖有限公司">晃聖有限公司</button>
-          <button class="btn btn-outline-primary big-btn select-company" data-company="育聖企業有限公司">育聖企業有限公司</button>
-        </div>
-      </div>
-
-      <div id="no-sheet-msg" class="alert alert-secondary d-none mt-3 mb-0">目前非盤點期間，請洽管理者。</div>
-
-      <div id="sheet-pick-area" class="d-none mt-3">
-        <label class="form-label">選擇盤點單</label>
-        <div id="sheet-pick-list" class="list-group"></div>
+      <label class="form-label">盤點階段（跨公司，選擇後直接進入品項清單）</label>
+      <div class="d-grid gap-2">
+        <button class="btn btn-outline-primary big-btn select-type" data-type="初盤">初盤</button>
+        <button class="btn btn-outline-primary big-btn select-type" data-type="複盤">複盤</button>
       </div>
     </div>
+  </section>
+
+  <!-- Admin：確認完成初盤/複盤（獨立頁面，只有管理員能看到入口） -->
+  <section id="screen-admin-confirm" class="screen">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <button class="btn btn-outline-secondary btn-sm" id="back-from-admin-confirm">← 返回</button>
+      <h1 class="h5 mb-0">確認完成盤點單</h1>
+      <span style="width: 3.5em"></span>
+    </div>
+    <div id="admin-confirm-list"></div>
   </section>
 
   <!-- 選倉庫 + 盤點項目表 -->
@@ -140,11 +140,6 @@
       <button class="btn btn-outline-secondary btn-sm" id="scan-btn">📷 掃描產品條碼</button>
     </div>
 
-    <div id="admin-confirm-area" class="mb-2 d-none">
-      <button class="btn btn-success w-100" id="confirm-sheet-btn">確認完成初盤</button>
-      <div id="confirm-error" class="alert alert-danger mt-2 d-none"></div>
-    </div>
-
     <div id="items-list"></div>
   </section>
 
@@ -168,6 +163,10 @@
       <button class="btn btn-outline-warning" data-key=".">.</button>
       <button class="btn btn-outline-secondary" data-key="0">0</button>
       <button class="btn btn-outline-warning" data-key="back">⌫</button>
+    </div>
+    <div class="d-flex gap-2 mb-2 calc-row">
+      <button class="btn btn-outline-info flex-fill" id="calc-multiply-btn">×</button>
+      <button class="btn btn-info flex-fill" id="calc-equals-btn">＝</button>
     </div>
     <div class="d-grid gap-2 mb-3">
       <button class="btn btn-outline-danger" id="clear-btn">清除</button>
