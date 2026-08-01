@@ -160,7 +160,7 @@
       <button class="btn btn-outline-secondary" data-key="7">7</button>
       <button class="btn btn-outline-secondary" data-key="8">8</button>
       <button class="btn btn-outline-secondary" data-key="9">9</button>
-      <button class="btn btn-outline-warning" data-key=".">.</button>
+      <button class="btn btn-outline-primary" data-key=".">.</button>
       <button class="btn btn-outline-secondary" data-key="0">0</button>
       <button class="btn btn-outline-warning" data-key="back">⌫</button>
     </div>
@@ -169,17 +169,18 @@
       <button class="btn btn-info flex-fill" id="calc-equals-btn">＝</button>
     </div>
     <div class="d-grid gap-2 mb-3">
-      <button class="btn btn-outline-danger" id="clear-btn">清除</button>
       <div class="d-grid gap-2" id="normal-btns">
         <button class="btn btn-primary big-btn" id="submit-count-btn">送出</button>
         <div class="d-flex gap-2">
-          <button class="btn btn-outline-dark flex-fill" id="zero-stock-btn">無庫存（盤點數量 0）</button>
-          <button class="btn btn-outline-warning flex-fill d-none" id="correct-count-btn">更正總數</button>
+          <button class="btn btn-outline-dark big-btn flex-fill" id="zero-stock-btn">無庫存（盤點數量 0）</button>
+          <button class="btn btn-outline-success big-btn flex-fill d-none" id="correct-count-btn">更正總數</button>
+          <button class="btn btn-outline-danger big-btn flex-fill" id="clear-btn">清除</button>
         </div>
       </div>
       <div class="d-flex gap-2 d-none" id="correct-mode-btns">
-        <button class="btn btn-danger flex-fill big-btn" id="force-correct-btn">強制更正數量</button>
-        <button class="btn btn-outline-secondary flex-fill" id="cancel-correct-btn">取消</button>
+        <button class="btn btn-danger big-btn flex-fill" id="force-correct-btn">強制更正數量</button>
+        <button class="btn btn-outline-secondary big-btn flex-fill" id="cancel-correct-btn">取消</button>
+        <button class="btn btn-outline-danger big-btn flex-fill" id="clear-btn-correct">清除</button>
       </div>
     </div>
     <div id="count-submit-error" class="alert alert-danger d-none"></div>
@@ -187,6 +188,49 @@
     <h2 class="h6">已盤點明細</h2>
     <ul class="entry-list list-unstyled" id="entry-list"></ul>
   </section>
+
+  <!-- 無庫存確認（改用自訂 Modal，不用原生 confirm()：安裝到主畫面的 standalone PWA 在部分瀏覽器
+       原生 confirm()/alert() 會被靜默吃掉，導致 if(!confirm()) 直接 return、按鈕看起來毫無反應）-->
+  <div class="modal fade" id="zero-stock-modal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">確認無庫存</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p id="zero-stock-modal-text" class="mb-0"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-dark" id="zero-stock-modal-ok-btn">確定無庫存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 確認完成初盤/複盤（Admin 頁面用）：同樣改用自訂 Modal，並加一道防呆——
+       要求 admin 在這裡重新輸入一次自己的姓名，避免手滑誤按。-->
+  <div class="modal fade" id="admin-confirm-modal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">確認完成盤點單</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p id="admin-confirm-modal-text"></p>
+          <label class="form-label">請再次輸入您的姓名以確認（必填）</label>
+          <input type="text" class="form-control" id="admin-confirm-name-input" />
+          <div class="alert alert-danger py-1 px-2 mt-2 d-none small" id="admin-confirm-modal-error"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-success" id="admin-confirm-modal-ok-btn">確認完成</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- 掃描條碼疊層 -->
   <div id="scanner-overlay" class="scanner-overlay d-none">

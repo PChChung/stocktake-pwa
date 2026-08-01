@@ -553,10 +553,12 @@ function keypadValue() {
   return Number.isFinite(n) ? n : 0;
 }
 
-document.getElementById("clear-btn").addEventListener("click", () => {
+function clearKeypad() {
   keypadBuffer = "0";
   updateKeypadDisplay();
-});
+}
+document.getElementById("clear-btn").addEventListener("click", clearKeypad);
+document.getElementById("clear-btn-correct").addEventListener("click", clearKeypad);
 
 function buildEntry(qty) {
   return {
@@ -589,8 +591,15 @@ document.getElementById("submit-count-btn").addEventListener("click", async () =
 });
 
 // 無庫存：送出一筆數量 0 的紀錄，品項會標成已盤點、已盤總數維持 0
-document.getElementById("zero-stock-btn").addEventListener("click", async () => {
-  if (!confirm(`確定「${currentItem.item_no}」無庫存（盤點數量 0）嗎？`)) return;
+// 用自訂 Modal 取代原生 confirm()：安裝到主畫面的 standalone PWA 有些瀏覽器會靜默吃掉原生對話框，
+// if(!confirm()) 會直接 return，按鈕看起來完全沒反應。
+const zeroStockModal = new bootstrap.Modal(document.getElementById("zero-stock-modal"));
+document.getElementById("zero-stock-btn").addEventListener("click", () => {
+  document.getElementById("zero-stock-modal-text").textContent = `確定「${currentItem.item_no}」無庫存（盤點數量 0）嗎？`;
+  zeroStockModal.show();
+});
+document.getElementById("zero-stock-modal-ok-btn").addEventListener("click", async () => {
+  zeroStockModal.hide();
   await submitEntry(buildEntry(0));
   keypadBuffer = "0";
   updateKeypadDisplay();
@@ -794,9 +803,15 @@ async function loadAdminConfirmList() {
   });
 }
 
+// 確認完成用自訂 Modal（不用原生 confirm()，理由同無庫存按鈕），並加一道防呆：
+// 要求 admin 在跳出的視窗裡重新輸入一次姓名，確認後才真正送出。
+const adminConfirmModalEl = document.getElementById("admin-confirm-modal");
+const adminConfirmModal = new bootstrap.Modal(adminConfirmModalEl);
+let pendingConfirmSheet = null;
+
 async function confirmSheet(sheet) {
-  const errorEl = document.querySelector(`.admin-confirm-row-error[data-sheet-id="${sheet.id}"]`);
-  errorEl.classList.add("d-none");
+  const rowErrorEl = document.querySelector(`.admin-confirm-row-error[data-sheet-id="${sheet.id}"]`);
+  rowErrorEl.classList.add("d-none");
 
   if (sheet.require_all_counted) {
     const { data, error } = await supabaseClient
@@ -805,36 +820,53 @@ async function confirmSheet(sheet) {
       .eq("sheet_id", sheet.id)
       .eq("status", "未盤點");
     if (error) {
-      errorEl.textContent = "檢查未盤點項目失敗：" + error.message;
-      errorEl.classList.remove("d-none");
+      rowErrorEl.textContent = "檢查未盤點項目失敗：" + error.message;
+      rowErrorEl.classList.remove("d-none");
       return;
     }
     if (data.length > 0) {
-      errorEl.textContent = `還有 ${data.length} 項未盤點，無法確認完成${sheet.type}`;
-      errorEl.classList.remove("d-none");
+      rowErrorEl.textContent = `還有 ${data.length} 項未盤點，無法確認完成${sheet.type}`;
+      rowErrorEl.classList.remove("d-none");
       return;
     }
   }
 
-  if (!confirm(`確定要確認完成「${sheet.company} ${sheet.period} ${sheet.type}」嗎？`)) return;
+  pendingConfirmSheet = sheet;
+  document.getElementById("admin-confirm-modal-text").textContent =
+    `確定要確認完成「${sheet.company} ${sheet.period} ${sheet.type}」嗎？確認後雲端資料將於月結時清除。`;
+  document.getElementById("admin-confirm-name-input").value = "";
+  document.getElementById("admin-confirm-modal-error").classList.add("d-none");
+  adminConfirmModal.show();
+}
+
+document.getElementById("admin-confirm-modal-ok-btn").addEventListener("click", async () => {
+  const sheet = pendingConfirmSheet;
+  const modalErrorEl = document.getElementById("admin-confirm-modal-error");
+  const name = document.getElementById("admin-confirm-name-input").value.trim();
+  if (!name) {
+    modalErrorEl.textContent = "請輸入您的姓名才能確認";
+    modalErrorEl.classList.remove("d-none");
+    return;
+  }
 
   const { error } = await supabaseClient
     .from("cloud_sheets")
     .update({
       status: "已確認",
-      confirmed_by: session.user.user_metadata?.display_name || session.user.email,
+      confirmed_by: name,
       confirmed_at: new Date().toISOString(),
     })
     .eq("id", sheet.id);
 
   if (error) {
-    errorEl.textContent = "確認失敗：" + error.message;
-    errorEl.classList.remove("d-none");
+    modalErrorEl.textContent = "確認失敗：" + error.message;
+    modalErrorEl.classList.remove("d-none");
     return;
   }
 
+  adminConfirmModal.hide();
   await loadAdminConfirmList();
-}
+});
 
 // ---- Service Worker ----
 if ("serviceWorker" in navigator) {
