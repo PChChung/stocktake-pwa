@@ -9,6 +9,12 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 // ---- 全域狀態 ----
 let session = null;
 let isAdmin = false;
+
+// 測試模式：只給管理者使用的練習環境。所有 cloud_sheets 查詢都會用 is_test 過濾，
+// 所以測試單與正式單在手機上永遠不會混在同一份清單裡。
+// 一般盤點人員看不到開關，也永遠是 false——避免現場人員誤盤到測試單。
+const TEST_MODE_KEY = "stocktake_test_mode";
+let isTestMode = false;
 let currentType = null;
 let currentSheets = []; // 目前類型（初盤/複盤）跨公司所有「開立中」的盤點單
 let sheetsById = {};
@@ -73,15 +79,33 @@ function requireOperatorName() {
   return true;
 }
 
+// ---- 測試模式 ----
+/// 套用測試模式的視覺（橫幅 + 整體換色）。非管理者一律強制關閉。
+function applyTestMode(on) {
+  isTestMode = !!on && isAdmin;
+  localStorage.setItem(TEST_MODE_KEY, isTestMode ? "1" : "0");
+  document.body.classList.toggle("test-mode", isTestMode);
+  document.getElementById("test-mode-bar").classList.toggle("d-none", !isTestMode);
+  const sw = document.getElementById("test-mode-switch");
+  if (sw) sw.checked = isTestMode;
+}
+
+/// 登入/還原 session 後套用共用的畫面狀態（顯示名稱、admin 工具、測試模式）。
+function applySessionUi() {
+  isAdmin = session.user.app_metadata?.role === "admin";
+  document.getElementById("who").textContent =
+    (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
+  document.getElementById("admin-tools-area").classList.toggle("d-none", !isAdmin);
+  // 非管理者即使 localStorage 殘留旗標也一律回到正式模式
+  applyTestMode(isAdmin && localStorage.getItem(TEST_MODE_KEY) === "1");
+}
+
 // ---- 登入 ----
 async function restoreSession() {
   const { data } = await supabaseClient.auth.getSession();
   if (data.session) {
     session = data.session;
-    isAdmin = session.user.app_metadata?.role === "admin";
-    document.getElementById("who").textContent =
-      (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
-    document.getElementById("admin-tools-area").classList.toggle("d-none", !isAdmin);
+    applySessionUi();
     showScreen("screen-select");
   } else {
     showScreen("screen-login");
@@ -102,17 +126,25 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
     return;
   }
   session = data.session;
-  isAdmin = session.user.app_metadata?.role === "admin";
-  document.getElementById("who").textContent =
-    (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
-  document.getElementById("admin-tools-area").classList.toggle("d-none", !isAdmin);
+  applySessionUi();
   document.getElementById("operator-name-input").value = ""; // 每次登入都要重新填寫盤點人員
+  showScreen("screen-select");
+});
+
+document.getElementById("test-mode-switch").addEventListener("change", (e) => {
+  applyTestMode(e.target.checked);
+  // 已載入的盤點單屬於另一個模式，直接退回選擇畫面重新挑，避免拿舊清單繼續盤
+  currentSheets = [];
+  currentItems = [];
+  currentType = null;
   showScreen("screen-select");
 });
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
   await supabaseClient.auth.signOut();
   session = null;
+  isAdmin = false;
+  applyTestMode(false); // 登出一律退出測試模式，下一個人登入不會莫名其妙在測試環境
   showScreen("screen-login");
 });
 
@@ -136,7 +168,8 @@ async function loadItemsForType(type) {
     .from("cloud_sheets")
     .select("id, period, company, type, status, require_all_counted, created_at")
     .eq("type", type)
-    .eq("status", "開立中");
+    .eq("status", "開立中")
+    .eq("is_test", isTestMode);
   if (sheetErr) {
     alert("讀取盤點單失敗：" + sheetErr.message);
     return;
@@ -192,7 +225,7 @@ async function attachInitialStatus(recountSheets, items) {
   try {
     const initSheetLists = await Promise.all(
       pairs.map((p) =>
-        supabaseClient.from("cloud_sheets").select("id, company").eq("type", "初盤").eq("company", p.company).eq("period", p.period)
+        supabaseClient.from("cloud_sheets").select("id, company").eq("type", "初盤").eq("company", p.company).eq("period", p.period).eq("is_test", isTestMode)
       )
     );
     const initSheets = initSheetLists.flatMap((r) => r.data || []);
@@ -244,7 +277,8 @@ document.getElementById("cross-search-btn").addEventListener("click", async () =
   const { data: sheets, error: sheetErr } = await supabaseClient
     .from("cloud_sheets")
     .select("id, period, company, type, status, require_all_counted")
-    .eq("status", "開立中");
+    .eq("status", "開立中")
+    .eq("is_test", isTestMode);
   if (sheetErr) {
     resultsEl.innerHTML = `<div class="text-danger small p-2">搜尋失敗：${sheetErr.message}</div>`;
     return;
@@ -760,6 +794,7 @@ async function loadAdminConfirmList() {
     .from("cloud_sheets")
     .select("id, period, company, type, status, require_all_counted, created_at")
     .eq("status", "開立中")
+    .eq("is_test", isTestMode)
     .order("period", { ascending: false });
 
   if (error) {

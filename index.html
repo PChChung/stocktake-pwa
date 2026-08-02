@@ -37,12 +37,28 @@
     .calc-row button { font-size: 1.3rem; padding: 14px 0; }
     /* 開始盤點頁面：上方（人員/搜尋）用淺底卡片，跟下方（選盤點階段）明顯區隔 */
     .input-panel { background: #eaf5f1; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+    .test-mode-toggle { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px 14px; }
+    /* 測試模式：整個 app 換成橘色系並在最上方壓一條固定橫幅。
+       刻意做得很明顯——最怕的不是測試資料汙染正式，而是有人在測試模式盤了一整個倉才發現不算數。 */
+    #test-mode-bar {
+      position: sticky; top: 0; z-index: 1500;
+      background: repeating-linear-gradient(45deg, #b45309, #b45309 12px, #92400e 12px, #92400e 24px);
+      color: #fff; text-align: center; font-weight: 700; padding: 8px 12px; font-size: .95rem;
+      letter-spacing: .04em; box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    }
+    body.test-mode { background: #fffbf5; }
+    body.test-mode .navbar, body.test-mode .bg-success { background-color: #b45309 !important; }
+    body.test-mode .input-panel { background: #fff2e0; }
+    body.test-mode .btn-success { background-color: #b45309; border-color: #b45309; }
+    body.test-mode .btn-outline-success { color: #92400e; border-color: #b45309; }
+    body.test-mode .item-row .badge-counted { background: #92400e; }
     .stage-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; color: #6c757d; font-size: 0.85rem; }
     .stage-divider::before, .stage-divider::after { content: ""; flex: 1; height: 1px; background: #dee2e6; }
     .stage-panel { background: #fff; border: 1px solid #dee2e6; border-radius: 10px; padding: 16px; }
   </style>
 </head>
 <body>
+  <div id="test-mode-bar" class="d-none">測試模式 — 此處盤點的數字不列入正式結果</div>
   <div id="conn-banner" class="status-banner warn">連線檢查中…</div>
 
   <!-- 登入畫面 -->
@@ -74,6 +90,18 @@
 
     <div id="admin-tools-area" class="mb-3 d-none">
       <button class="btn btn-outline-success w-100" id="admin-confirm-btn">🗂️ 管理：確認完成盤點單</button>
+
+      <!-- 測試模式開關只給管理者看見。一般盤點人員完全不會出現這個區塊，
+           避免現場人員誤切到測試模式、盤了一整個倉結果數字不算數。 -->
+      <div class="test-mode-toggle mt-3">
+        <div class="form-check form-switch d-flex align-items-center gap-2 mb-0">
+          <input class="form-check-input" type="checkbox" role="switch" id="test-mode-switch" />
+          <label class="form-check-label" for="test-mode-switch">
+            <strong>測試模式</strong>
+            <span class="d-block text-muted" style="font-size: .8rem;">練習用，資料與正式盤點分開</span>
+          </label>
+        </div>
+      </div>
     </div>
 
     <div class="input-panel">
