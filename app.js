@@ -13,7 +13,10 @@ let isAdmin = false;
 // 測試模式：只給管理者使用的練習環境。所有 cloud_sheets 查詢都會用 is_test 過濾，
 // 所以測試單與正式單在手機上永遠不會混在同一份清單裡。
 // 一般盤點人員看不到開關，也永遠是 false——避免現場人員誤盤到測試單。
-const TEST_MODE_KEY = "stocktake_test_mode";
+//
+// 刻意「不」記憶到 localStorage：每次開啟 PWA 一律從正式模式開始，測試模式只在當次
+// 使用期間有效。否則管理者上次開著測試模式，隔天打開 app 沒注意到還在測試環境，
+// 盤了一整個倉才發現數字不算數——這是這個功能最痛的失敗情境。
 let isTestMode = false;
 let currentType = null;
 let currentSheets = []; // 目前類型（初盤/複盤）跨公司所有「開立中」的盤點單
@@ -83,7 +86,6 @@ function requireOperatorName() {
 /// 套用測試模式的視覺（橫幅 + 整體換色）。非管理者一律強制關閉。
 function applyTestMode(on) {
   isTestMode = !!on && isAdmin;
-  localStorage.setItem(TEST_MODE_KEY, isTestMode ? "1" : "0");
   document.body.classList.toggle("test-mode", isTestMode);
   document.getElementById("test-mode-bar").classList.toggle("d-none", !isTestMode);
   const sw = document.getElementById("test-mode-switch");
@@ -96,8 +98,9 @@ function applySessionUi() {
   document.getElementById("who").textContent =
     (session.user.user_metadata?.display_name || session.user.email) + (isAdmin ? "（Admin）" : "");
   document.getElementById("admin-tools-area").classList.toggle("d-none", !isAdmin);
-  // 非管理者即使 localStorage 殘留旗標也一律回到正式模式
-  applyTestMode(isAdmin && localStorage.getItem(TEST_MODE_KEY) === "1");
+  // 每次開啟 PWA 一律從正式模式開始，不沿用上次的狀態（見上方 isTestMode 的說明）
+  applyTestMode(false);
+  localStorage.removeItem("stocktake_test_mode"); // 清掉舊版本殘留的記憶值
 }
 
 // ---- 登入 ----
