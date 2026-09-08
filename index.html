@@ -8,53 +8,131 @@
   <meta name="theme-color" content="#1e6f5c" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="lib/bootstrap.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    body { padding-bottom: 24px; }
+    /* 跟主系統（wwwroot/css/design-system.css）共用同一套色票，兩邊維持一致的品牌識別 */
+    :root {
+      --ink: #1C2321;
+      --ink-soft: #4A534E;
+      --paper: #F7F6F2;
+      --teal: #1E6F5C;
+      --teal-deep: #154F42;
+      --teal-tint: #E4EFEC;
+      --amber: #B45309;
+      --amber-deep: #92400E;
+      --amber-tint: #FBF0E2;
+      --rose: #B3261E;
+      --rose-tint: #FAEAE8;
+      --line: #DDD8CC;
+      --line-soft: #EAE7DD;
+    }
+    body { padding-bottom: 24px; background: var(--paper); color: var(--ink); font-family: "Noto Sans TC", "Segoe UI", system-ui, sans-serif; }
+
+    /* Bootstrap 把每個按鈕變體的顏色編譯成寫死的 hex，逐一覆寫成同一套色票（跟主系統作法一致） */
+    .btn { font-weight: 600; }
+    .btn-primary {
+      --bs-btn-bg: var(--teal); --bs-btn-border-color: var(--teal);
+      --bs-btn-hover-bg: var(--teal-deep); --bs-btn-hover-border-color: var(--teal-deep);
+      --bs-btn-active-bg: var(--teal-deep); --bs-btn-active-border-color: var(--teal-deep);
+      --bs-btn-disabled-bg: var(--teal); --bs-btn-disabled-border-color: var(--teal);
+    }
+    .btn-outline-primary {
+      --bs-btn-color: var(--teal); --bs-btn-border-color: var(--teal);
+      --bs-btn-hover-bg: var(--teal); --bs-btn-hover-border-color: var(--teal);
+      --bs-btn-active-bg: var(--teal); --bs-btn-active-border-color: var(--teal);
+    }
+    .btn-success {
+      --bs-btn-bg: var(--teal); --bs-btn-border-color: var(--teal);
+      --bs-btn-hover-bg: var(--teal-deep); --bs-btn-hover-border-color: var(--teal-deep);
+      --bs-btn-active-bg: var(--teal-deep); --bs-btn-active-border-color: var(--teal-deep);
+    }
+    .btn-outline-success {
+      --bs-btn-color: var(--teal-deep); --bs-btn-border-color: var(--teal);
+      --bs-btn-hover-bg: var(--teal); --bs-btn-hover-border-color: var(--teal);
+      --bs-btn-active-bg: var(--teal); --bs-btn-active-border-color: var(--teal);
+    }
+    .btn-danger {
+      --bs-btn-bg: var(--rose); --bs-btn-border-color: var(--rose);
+      --bs-btn-hover-bg: #8f1e18; --bs-btn-hover-border-color: #8f1e18;
+      --bs-btn-active-bg: #8f1e18; --bs-btn-active-border-color: #8f1e18;
+    }
+    .btn-outline-danger {
+      --bs-btn-color: var(--rose); --bs-btn-border-color: var(--rose);
+      --bs-btn-hover-bg: var(--rose); --bs-btn-hover-border-color: var(--rose);
+      --bs-btn-active-bg: var(--rose); --bs-btn-active-border-color: var(--rose);
+    }
+    .btn-outline-warning {
+      --bs-btn-color: var(--amber); --bs-btn-border-color: var(--amber);
+      --bs-btn-hover-bg: var(--amber); --bs-btn-hover-border-color: var(--amber); --bs-btn-hover-color: #fff;
+      --bs-btn-active-bg: var(--amber); --bs-btn-active-border-color: var(--amber); --bs-btn-active-color: #fff;
+    }
+    .btn-outline-info {
+      --bs-btn-color: var(--teal-deep); --bs-btn-border-color: var(--teal);
+      --bs-btn-hover-bg: var(--teal); --bs-btn-hover-border-color: var(--teal); --bs-btn-hover-color: #fff;
+      --bs-btn-active-bg: var(--teal); --bs-btn-active-border-color: var(--teal); --bs-btn-active-color: #fff;
+    }
+    .btn-info { --bs-btn-bg: var(--teal); --bs-btn-border-color: var(--teal); --bs-btn-hover-bg: var(--teal-deep); --bs-btn-hover-border-color: var(--teal-deep); --bs-btn-color: #fff; --bs-btn-hover-color: #fff; }
+    .btn-outline-dark {
+      --bs-btn-color: var(--ink); --bs-btn-border-color: var(--ink);
+      --bs-btn-hover-bg: var(--ink); --bs-btn-hover-border-color: var(--ink);
+      --bs-btn-active-bg: var(--ink); --bs-btn-active-border-color: var(--ink);
+    }
+    .btn-outline-secondary {
+      --bs-btn-color: var(--ink-soft); --bs-btn-border-color: var(--line);
+      --bs-btn-hover-bg: var(--line-soft); --bs-btn-hover-border-color: var(--ink-soft); --bs-btn-hover-color: var(--ink);
+      --bs-btn-active-bg: var(--line-soft); --bs-btn-active-border-color: var(--ink-soft); --bs-btn-active-color: var(--ink);
+    }
+    .form-control:focus, .form-select:focus { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-tint); }
+    .badge.bg-secondary { background-color: var(--ink-soft) !important; }
+    .badge.bg-warning { background-color: var(--amber-tint) !important; color: var(--amber) !important; }
+    .modal-content { border: 1px solid var(--line); border-radius: 8px; }
     .screen { display: none; padding: 16px; }
     .screen.active { display: block; }
     .status-banner { padding: 10px 16px; font-size: 0.9rem; text-align: center; }
-    .status-banner.ok { background: #d1f7e0; color: #0a5c36; }
-    .status-banner.warn { background: #fff3cd; color: #7a5b00; }
-    .status-banner.offline { background: #f8d7da; color: #842029; }
+    .status-banner.ok { background: var(--teal-tint); color: var(--teal-deep); }
+    .status-banner.warn { background: var(--amber-tint); color: var(--amber); }
+    .status-banner.offline { background: var(--rose-tint); color: var(--rose); }
     .big-btn { font-size: 1.1rem; padding: 18px; }
     .item-row { cursor: pointer; }
-    .item-row .badge-counted { background: #0a5c36; }
-    .item-row .badge-uncounted { background: #6c757d; }
-    .item-row .badge-pending { background: #b45309; }
+    .item-row .badge-counted { background: var(--teal-deep); }
+    .item-row .badge-uncounted { background: var(--ink-soft); }
+    .item-row .badge-pending { background: var(--amber); }
     #reader { width: 100%; }
     .scanner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 2000; padding: 16px; }
-    .keypad-display { font-size: 3rem; text-align: center; padding: 16px; background: #f1f3f5; border-radius: 8px; margin-bottom: 12px; letter-spacing: 2px; }
+    .keypad-display { font-size: 3rem; text-align: center; padding: 16px; background: var(--line-soft); border-radius: 8px; margin-bottom: 12px; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
     .keypad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .keypad-grid button { font-size: 1.5rem; padding: 18px 0; }
-    .entry-list li { display: flex; justify-content: space-between; font-size: 0.85rem; }
+    .entry-list li { display: flex; justify-content: space-between; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
     /* 規格/批號/效期在倉庫現場要看得清楚，比一般輔助文字大一號、不用淡色 */
-    .item-attrs { font-size: 0.95rem; color: #212529; }
+    .item-attrs { font-size: 0.95rem; color: var(--ink); }
     /* 規格與批號同一行，用直線明確區隔 */
-    .attr-sep { color: #adb5bd; padding: 0 8px; }
+    .attr-sep { color: var(--ink-soft); padding: 0 8px; opacity: .5; }
     /* 品號、批號是倉庫現場辨識品項的主要依據，放大加粗 */
     .item-no-lg { font-size: 1.15rem; font-weight: 700; }
-    .lot-no-lg { font-size: 1.05rem; font-weight: 700; background: #fff3cd; color: #7a5b00; padding: 1px 8px; border-radius: 4px; }
+    .lot-no-lg { font-size: 1.05rem; font-weight: 700; background: var(--amber-tint); color: var(--amber); padding: 1px 8px; border-radius: 4px; }
     .calc-row button { font-size: 1.3rem; padding: 14px 0; }
     /* 開始盤點頁面：上方（人員/搜尋）用淺底卡片，跟下方（選盤點階段）明顯區隔 */
-    .input-panel { background: #eaf5f1; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
-    .test-mode-toggle { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px 14px; }
+    .input-panel { background: var(--teal-tint); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+    .test-mode-toggle { background: var(--amber-tint); border: 1px solid #F0D2A8; border-radius: 10px; padding: 12px 14px; }
     /* 測試模式：整個 app 換成橘色系並在最上方壓一條固定橫幅。
        刻意做得很明顯——最怕的不是測試資料汙染正式，而是有人在測試模式盤了一整個倉才發現不算數。 */
     #test-mode-bar {
       position: sticky; top: 0; z-index: 1500;
-      background: repeating-linear-gradient(45deg, #b45309, #b45309 12px, #92400e 12px, #92400e 24px);
+      background: repeating-linear-gradient(45deg, var(--amber), var(--amber) 12px, var(--amber-deep) 12px, var(--amber-deep) 24px);
       color: #fff; text-align: center; font-weight: 700; padding: 8px 12px; font-size: .95rem;
       letter-spacing: .04em; box-shadow: 0 2px 6px rgba(0,0,0,.3);
     }
-    body.test-mode { background: #fffbf5; }
-    body.test-mode .navbar, body.test-mode .bg-success { background-color: #b45309 !important; }
-    body.test-mode .input-panel { background: #fff2e0; }
-    body.test-mode .btn-success { background-color: #b45309; border-color: #b45309; }
-    body.test-mode .btn-outline-success { color: #92400e; border-color: #b45309; }
-    body.test-mode .item-row .badge-counted { background: #92400e; }
-    .stage-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; color: #6c757d; font-size: 0.85rem; }
-    .stage-divider::before, .stage-divider::after { content: ""; flex: 1; height: 1px; background: #dee2e6; }
-    .stage-panel { background: #fff; border: 1px solid #dee2e6; border-radius: 10px; padding: 16px; }
+    body.test-mode { background: var(--amber-tint); }
+    body.test-mode .navbar, body.test-mode .bg-success { background-color: var(--amber) !important; }
+    body.test-mode .input-panel { background: #FBE4C6; }
+    body.test-mode .btn-success { background-color: var(--amber); border-color: var(--amber); }
+    body.test-mode .btn-outline-success { color: var(--amber-deep); border-color: var(--amber); }
+    body.test-mode .item-row .badge-counted { background: var(--amber-deep); }
+    .stage-divider { display: flex; align-items: center; gap: 10px; margin: 20px 0 14px; color: var(--ink-soft); font-size: 0.85rem; }
+    .stage-divider::before, .stage-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+    .stage-panel { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
   </style>
 </head>
 <body>
