@@ -6,8 +6,9 @@ name: Supabase Keepalive
 
 on:
   schedule:
-    # 每週一 09:00 台灣時間 (UTC+8) = UTC 01:00
-    - cron: "0 1 * * 1"
+    # 每 2 天一次，09:00 台灣時間 (UTC+8) = UTC 01:00。
+    # 原本每週一次，但免費版閒置判定比 7 天更嚴格，已發生兩次被暫停（2026-08、2026-10）
+    - cron: "0 1 */2 * *"
   workflow_dispatch: # 允許在 GitHub Actions 頁面手動觸發，方便驗收測試
 
 jobs:
